@@ -163,6 +163,7 @@ class ExecutionSimulator:
                 est = fill_by_base(levels, filled, limit_price, is_buy=True)
             else:
                 amt = rules.round_amount(base_amount) if rules else base_amount
+                req = amt  # lot-size rounding is not a partial fill
                 est = fill_by_base(levels, amt, limit_price, is_buy=(side == Side.BUY))
             filled, q = est.base_amount, est.quote_amount
             if rules and filled > 0 and not rules.meets_minimums(filled, q / filled):
@@ -381,6 +382,12 @@ class ArbitrageExecutor:
                 continue
             sym_sell, sym_buy = f"{ccy}/{start}", f"{start}/{ccy}"
             b1 = get_book(exchange, sym_sell)
+            r_sell = self.sim.rules.get((exchange, sym_sell))
+            if b1 is not None and b1.bids:
+                rounded = r_sell.round_amount(flow) if r_sell else flow
+                if rounded <= 0 or (r_sell and not r_sell.meets_minimums(rounded, b1.bids[0].price)):
+                    job.notes.append(f"residual {flow} {ccy} below minimum order size (dust) - kept")
+                    continue
             if b1 is not None:
                 f = self.sim.execute_order(pf, b1, Side.SELL, now, base_amount=flow, purpose="unwind",
                                            order_type="taker", fee_in_quote=False, ref=job.job_id)

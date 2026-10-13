@@ -18,7 +18,7 @@ from enum import StrEnum
 from pydantic import BaseModel
 
 from arbies.arbitrage.models import Opportunity
-from arbies.core.models import ZERO, Side, split_symbol
+from arbies.core.models import ZERO, split_symbol
 from arbies.core.valuation import Valuator
 from arbies.execution.portfolio import Portfolio
 

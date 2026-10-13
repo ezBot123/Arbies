@@ -82,12 +82,14 @@ class Settings(BaseSettings):
     # --- AI providers -------------------------------------------------------------------
     ai_provider: str = "none"  # none | anthropic | openai
     anthropic_api_key: SecretStr | None = None
-    anthropic_model: str = "claude-sonnet-5-5"
+    anthropic_model: str = "claude-opus-5-5"
     openai_api_key: SecretStr | None = None
     openai_base_url: str | None = None
     openai_model: str = "gpt-4o-mini"
     ai_max_tool_calls: int = 12
     ai_monthly_budget_usd: Decimal = Decimal("20")
+    agents_schedule_enabled: bool = False  # run agents on their default schedules
+    agents_schedule_use_llm: bool = False  # scheduled runs use the LLM (costs money) only if enabled
 
     def public_dict(self) -> dict:
         """Settings safe to show in the UI (no secrets)."""
@@ -112,6 +114,9 @@ class Settings(BaseSettings):
             "openai_model": self.openai_model,
             "openai_base_url": self.openai_base_url,
             "credential_encryption_configured": self.secret_key is not None,
+            "agents_schedule_enabled": self.agents_schedule_enabled,
+            "agents_schedule_use_llm": self.agents_schedule_use_llm,
+            "ai_monthly_budget_usd": str(self.ai_monthly_budget_usd),
         }
 
     @property
