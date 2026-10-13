@@ -53,7 +53,6 @@ else
 fi
 grep -q '^ARBIES_LIVE_TRADING_ENABLED=false' .env && ok "live trading disabled" || { echo "  ! ARBIES_LIVE_TRADING_ENABLED is not false in .env — refusing to continue"; exit 1; }
 grep -q '^ARBIES_MARKET_DATA_MODE=live' .env && ok "market data mode: live (real public exchange data)" || echo "  ! market data mode is not 'live' in .env"
-set -a; . ./.env; set +a
 
 info "3. Dependencies"
 if [[ ! -x backend/.venv/bin/python ]]; then "$PY" -m venv backend/.venv; fi
