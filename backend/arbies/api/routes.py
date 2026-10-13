@@ -911,3 +911,20 @@ async def historical_delete(sid: int, request: Request, user: str = Depends(requ
     ok = await rt.historical.delete(sid)
     await rt.audit(user, "historical_simulation_delete", str(sid), ip=_ip(request))
     return {"deleted": ok}
+
+
+@api.post("/historical/simulations/{sid}/resume")
+async def historical_resume(sid: int, request: Request, user: str = Depends(require_user), rt=Depends(get_rt)):
+    from arbies.historical.simulator import SimulationConfig
+    d = await rt.historical.get(sid)
+    if d is None:
+        raise HTTPException(404, "not found")
+    if d["status"] in ("completed", "running", "queued"):
+        raise HTTPException(409, f"simulation is {d['status']}")
+    cfg = SimulationConfig.model_validate(d["config"])
+    import asyncio
+    t = asyncio.create_task(rt.historical.execute(sid, cfg))
+    rt.historical._tasks.add(t)
+    t.add_done_callback(rt.historical._tasks.discard)
+    await rt.audit(user, "historical_simulation_resume", str(sid), ip=_ip(request))
+    return {"id": sid, "status": "running"}

@@ -21,7 +21,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import delete, insert, select
 
-from arbies.core.models import DataSource, OrderBook, utcnow
+from arbies.core.models import BookLevel, DataSource, OrderBook, utcnow
 from arbies.db.models import HistoricalSimTrade, HistoricalSimulation, OrderBookSnapshot
 from arbies.db.session import Database
 from arbies.historical.coverage import coverage_report, minute_sets
@@ -122,21 +122,32 @@ class HistoricalService:
                 out.append(sp)
         return out
 
-    async def execute(self, sid: int, cfg: SimulationConfig) -> None:
+    async def execute(self, sid: int, cfg: SimulationConfig, only: list[str] | None = None) -> None:
+        """Run (or resume) a simulation. ``only`` limits this invocation to some variants; finished variants are
+        kept on disk, so a later call completes the rest and assembles the result."""
         self.progress[sid] = 0.0
         async with self.db.session() as s:
             row = await s.get(HistoricalSimulation, sid)
-            row.status, row.started_at = "running", utcnow()
+            row.status, row.started_at, row.error = "running", row.started_at or utcnow(), ""
         try:
-            result, trades = await self._run(sid, cfg)
+            out = await self._run(sid, cfg, only)
+            if out is None:
+                async with self.db.session() as s:
+                    row = await s.get(HistoricalSimulation, sid)
+                    row.status = "partial"
+                    row.error = "Some variants are still to run; resume this simulation to finish it."
+                return
+            result, trades = out
             async with self.db.session() as s:
                 row = await s.get(HistoricalSimulation, sid)
                 row.status, row.progress, row.finished_at = "completed", 1.0, utcnow()
                 row.result = result
                 row.result_hash = result["result_hash"]
+                await s.execute(delete(HistoricalSimTrade).where(HistoricalSimTrade.simulation_id == sid))
                 if trades:
                     for i in range(0, len(trades), 2000):
                         await s.execute(insert(HistoricalSimTrade), trades[i:i + 2000])
+            shutil.rmtree(self.cache_dir / f"sim-{sid}", ignore_errors=True)  # only once results are stored
         except Exception as e:  # noqa: BLE001
             log.warning("historical simulation failed", sid=sid, error=str(e))
             async with self.db.session() as s:
@@ -145,7 +156,7 @@ class HistoricalService:
         finally:
             self.progress.pop(sid, None)
 
-    async def _run(self, sid: int, cfg: SimulationConfig) -> tuple[dict, list[dict]]:
+    async def _run(self, sid: int, cfg: SimulationConfig, only: list[str] | None = None) -> tuple[dict, list[dict]] | None:
         marks, notes = await self.marks(cfg)
         rules, rule_notes = await self.rules_for(cfg.exchanges, cfg.symbols)
         cov = await coverage_report(self.db, cfg.start, cfg.end, cfg.exchanges, cfg.symbols)
@@ -158,23 +169,41 @@ class HistoricalService:
         cfg_json = cfg.model_dump(mode="json")
         events = 0
         cache = self.cache_dir / f"sim-{sid}"
-        cache.mkdir(parents=True, exist_ok=True)
+        vdir = cache / "variants"
+        vdir.mkdir(parents=True, exist_ok=True)
         day_files: list[str] = []
-        try:
-            # phase 1: stream each day's genuine order books once (chronological across sources) into compressed
-            # frames of primitive rows - memory stays bounded by the frame size, not the day size
-            for i, day in enumerate(days):
-                d0 = datetime(day.year, day.month, day.day, tzinfo=UTC)
-                lo, hi = max(d0, cfg.start), min(d0 + timedelta(days=1) - timedelta(microseconds=1), cfg.end)
-                f = cache / f"{day.isoformat()}.pkl.gz"
-                events += await self._write_day(f, sources, cfg.exchanges, cfg.symbols, lo, hi)
-                day_files.append(str(f))
-                self.progress[sid] = 0.25 * (i + 1) / max(1, len(days))
-            # phase 2: each worker parses each day once and replays its group of variants in lockstep
-            # (variants are independent and deterministic, so grouping does not change any result)
-            groups = balance_groups(specs, self.workers)
+        # phase 1: stream each day's genuine order books once (chronological across sources) into compressed frames
+        # of primitive rows. Memory stays bounded by the frame size; files are kept until the simulation completes so
+        # an interrupted run resumes without re-exporting.
+        for i, day in enumerate(days):
+            d0 = datetime(day.year, day.month, day.day, tzinfo=UTC)
+            lo, hi = max(d0, cfg.start), min(d0 + timedelta(days=1) - timedelta(microseconds=1), cfg.end)
+            f = cache / f"{day.isoformat()}.pkl.gz"
+            cnt = cache / f"{day.isoformat()}.count"
+            if not (f.exists() and cnt.exists()):
+                tmp = cache / f"{day.isoformat()}.tmp"
+                n = await self._write_day(tmp, sources, cfg.exchanges, cfg.symbols, lo, hi)
+                tmp.replace(f)
+                cnt.write_text(str(n))
+            events += int(cnt.read_text())
+            day_files.append(str(f))
+            self.progress[sid] = 0.25 * (i + 1) / max(1, len(days))
+
+        # phase 2: each worker parses each day once and replays its group of variants in lockstep (variants are
+        # independent and deterministic, so grouping and resuming do not change any result)
+        def vfile(name: str) -> Path:
+            return vdir / (hashlib.sha256(name.encode()).hexdigest()[:24] + ".pkl")
+        todo = [sp for sp in specs if not vfile(sp[0]).exists() and (only is None or sp[0] in only)]
+        if todo:
+            groups = balance_groups(todo, self.workers)
             jobs = [(g, cfg_json, rules, marks, day_files) for g in groups]
-            by_name: dict[str, VariantResult] = {}
+
+            def save(results: list[VariantResult]) -> None:
+                for r in results:
+                    tmp = vfile(r.name).with_suffix(".tmp")
+                    with open(tmp, "wb") as fh:
+                        pickle.dump(r, fh, protocol=pickle.HIGHEST_PROTOCOL)
+                    tmp.replace(vfile(r.name))
             if len(jobs) > 1:
                 loop = asyncio.get_running_loop()
                 ctx = multiprocessing.get_context("spawn")
@@ -182,16 +211,17 @@ class HistoricalService:
                     futs = [loop.run_in_executor(pool, replay_group, *j) for j in jobs]
                     done = 0
                     for fut in asyncio.as_completed(futs):
-                        for r in await fut:
-                            by_name[r.name] = r
+                        save(await fut)
                         done += 1
                         self.progress[sid] = 0.25 + 0.65 * done / len(jobs)
             else:
-                for r in await asyncio.to_thread(replay_group, *jobs[0]):
-                    by_name[r.name] = r
-            results: list[VariantResult] = [by_name[spec[0]] for spec in specs]
-        finally:
-            shutil.rmtree(cache, ignore_errors=True)
+                save(await asyncio.to_thread(replay_group, *jobs[0]))
+        if any(not vfile(sp[0]).exists() for sp in specs):
+            return None
+        results: list[VariantResult] = []
+        for sp in specs:
+            with open(vfile(sp[0]), "rb") as fh:
+                results.append(pickle.load(fh))  # written above by this service
 
         # ---- benchmarks (same contribution dates)
         base_fees = cfg.fees()
@@ -401,6 +431,20 @@ def balance_groups(specs: list[tuple], workers: int) -> list[list[tuple]]:
     return [g for g in groups if g]
 
 
+_SOURCES = {v.value: v for v in DataSource}
+
+
+def fast_book(ex, sym, bids, asks, rt, et, seq, src) -> OrderBook:
+    """Same result as ``OrderBook.from_levels`` for stored rows (verified by test), about 1.5x faster."""
+    b = [lv for lv in (BookLevel(Decimal(p), Decimal(a)) for p, a, *_ in bids) if lv.amount > 0]
+    k = [lv for lv in (BookLevel(Decimal(p), Decimal(a)) for p, a, *_ in asks) if lv.amount > 0]
+    if len(b) > 1:
+        b.sort(key=lambda lv: lv.price, reverse=True)
+    if len(k) > 1:
+        k.sort(key=lambda lv: lv.price)
+    return OrderBook(ex, sym, b, k, rt, et, _SOURCES[src], seq)
+
+
 def iter_day(path: str):
     """Yield OrderBooks from a day file written by ``HistoricalService._write_day`` (this service's own DB rows)."""
     with gzip.open(path, "rb") as fh:
@@ -410,8 +454,7 @@ def iter_day(path: str):
             except EOFError:
                 return
             for ex, sym, bids, asks, rt, et, seq, src in rows:
-                yield OrderBook.from_levels(ex, sym, bids, asks, received_ts=rt, exchange_ts=et, source=DataSource(src),
-                                            sequence=seq)
+                yield fast_book(ex, sym, bids, asks, rt, et, seq, src)
 
 
 def replay_group(specs: list[tuple], cfg_json: dict, rules: dict, marks: DailyMarks,

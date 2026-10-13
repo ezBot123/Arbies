@@ -134,3 +134,35 @@ async def test_parallel_workers_give_identical_results(db, tmp_path):
     assert {k: v["result_hash"] for k, v in par["result"]["variants"].items()} == \
         {k: v["result_hash"] for k, v in seq["result"]["variants"].items()}
     assert not any((tmp_path / "b").rglob("*.pkl"))  # replay cache removed afterwards
+
+
+async def test_resumed_simulation_matches_single_run(db, tmp_path):
+    await seed(db)
+    full = await HistoricalService(db, rules_for, "test", cache_dir=str(tmp_path / "a")).run_and_wait(config())
+    svc = HistoricalService(db, rules_for, "test", cache_dir=str(tmp_path / "b"))
+    cfg = config()
+    names = [sp[0] for sp in svc.variant_specs(cfg)]
+    sid = await svc.create(cfg)
+    await svc.execute(sid, cfg, only=names[:2])  # e.g. stopped by a time limit after some variants
+    part = await svc.get(sid)
+    assert part["status"] == "partial" and not part["result"]
+    assert any((tmp_path / "b").rglob("*.pkl.gz"))  # day cache kept for the resume
+    await svc.execute(sid, cfg)  # resume: only the remaining variants run
+    done = await svc.get(sid)
+    assert done["status"] == "completed" and done["result_hash"] == full["result_hash"]
+    assert not any((tmp_path / "b").rglob("*.pkl*"))  # cache removed only after results are stored
+
+
+def test_fast_book_equals_from_levels():
+    from datetime import UTC, datetime
+
+    from arbies.core.models import OrderBook
+    from arbies.historical.service import fast_book
+    t = datetime(2025, 1, 1, tzinfo=UTC)
+    rows = [("kraken", "BTC/USD", [["99", "1"], ["100", "2"], ["98", "0"]], [["101", "1"], ["100.5", "3"]], t, t, 7,
+             "third_party_imported"),
+            ("coinbase", "ETH/USD", [], [["2000.1", "0.5"]], t, None, None, "live_recorded")]
+    for r in rows:
+        ex, sym, b, a, rt, et, seq, src = r
+        assert fast_book(*r) == OrderBook.from_levels(ex, sym, b, a, received_ts=rt, exchange_ts=et,
+                                                      source=DataSource(src), sequence=seq)
