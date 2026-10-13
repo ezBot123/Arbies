@@ -229,8 +229,12 @@ class BacktestService:
                                          end: datetime, interval_ms: int = 1000, seed: int = 1234,
                                          dislocation_prob: float = 0.01) -> dict:
         """Write a SYNTHETIC dataset to the snapshot table (labelled source='synthetic')."""
-        if (end - start).total_seconds() > 7 * 86400:
-            raise ValueError("synthetic datasets are limited to 7 days")
+        if end <= start:
+            raise ValueError("end must be after start")
+        est_rows = (end - start).total_seconds() * 1000 / interval_ms * len(exchanges) * len(symbols)
+        if est_rows > 400_000:
+            raise ValueError(f"synthetic dataset would contain ~{int(est_rows):,} snapshots (limit 400,000); "
+                             "shorten the period, increase the interval or reduce markets")
         books = await asyncio.to_thread(generate_history, exchanges, symbols, start, end, interval_ms, seed, 10,
                                         dislocation_prob)
         rows = [snapshot_row(ob, 10, None) for ob in books]

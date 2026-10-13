@@ -81,16 +81,14 @@ class BacktestConfig(BaseModel):
             if b not in bases:
                 bases.append(b)
         fiat = [q for q in quotes if q in ("USD", "GBP", "EUR", "USDC", "USDT")] or quotes[:1]
-        primary = fiat[0]
         crypto = [b for b in bases if b not in ("USD", "GBP", "EUR", "USDC", "USDT")]
         n_ex = len(self.exchanges)
         out = []
         for ex in self.exchanges:
             share = Decimal(1) / n_ex
-            if crypto:
-                out.append(AllocationItem(exchange=ex, asset=primary, fraction=share / 2))
-                for c in crypto:
-                    out.append(AllocationItem(exchange=ex, asset=c, fraction=share / 2 / len(crypto)))
-            else:
-                out.append(AllocationItem(exchange=ex, asset=primary, fraction=share))
+            cash_share = share / 2 if crypto else share
+            for f in fiat:  # cash spread across every fiat quote currency in use
+                out.append(AllocationItem(exchange=ex, asset=f, fraction=cash_share / len(fiat)))
+            for c in crypto:
+                out.append(AllocationItem(exchange=ex, asset=c, fraction=share / 2 / len(crypto)))
         return out

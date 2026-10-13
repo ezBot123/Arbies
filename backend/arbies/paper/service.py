@@ -30,6 +30,10 @@ from arbies.services.trading_core import TradingCore
 log = get_logger(__name__)
 
 
+def _q(v: Decimal) -> Decimal:
+    return v.quantize(Decimal("0.00000001"))
+
+
 class PaperConfig(BaseModel):
     name: str = "Paper session"
     strategies: list[str] = Field(default_factory=lambda: ["cross_exchange", "triangular"])
@@ -256,7 +260,7 @@ class PaperTrader:
         out = {
             "status": self.status, "session_id": self.session_id, "simulated": True,
             "data_source": self.hub.data_source(), "started_at": self.started_at.isoformat() if self.started_at else None,
-            "initial_value_gbp": str(self.initial_value), "last_error": self.last_error,
+            "initial_value_gbp": str(_q(self.initial_value)), "last_error": self.last_error,
             "config": self.config.model_dump(mode="json") if self.config else self.default_config().model_dump(mode="json"),
         }
         if self.core is None:
@@ -267,15 +271,15 @@ class PaperTrader:
         realised = sum((Decimal(j["pnl_gbp"]) for j in self.recent_jobs), ZERO)
         exp = core.risk.exposures(core.portfolio, core.valuator)
         out.update({
-            "value_gbp": str(value), "valuation_estimated": est,
-            "total_pnl_gbp": str(value - self.initial_value),
+            "value_gbp": str(_q(value)), "valuation_estimated": est,
+            "total_pnl_gbp": str(_q(value - self.initial_value)),
             "simulated_realised_pnl_recent_gbp": str(realised),
             "daily_realised_pnl_gbp": str(core.risk.daily_pnl(now)),
             "balances": core.portfolio.snapshot(core.valuator),
-            "value_by_exchange": {k: str(v) for k, v in core.portfolio.value_by_exchange(core.valuator).items()},
-            "value_by_asset": {k: str(v) for k, v in core.portfolio.value_by_asset(core.valuator).items()},
-            "exposure": {"total_gbp": str(exp["total"]), "by_exchange": {k: str(v) for k, v in exp["by_exchange"].items()},
-                         "by_asset": {k: str(v) for k, v in exp["by_asset"].items()}},
+            "value_by_exchange": {k: str(_q(v)) for k, v in core.portfolio.value_by_exchange(core.valuator).items()},
+            "value_by_asset": {k: str(_q(v)) for k, v in core.portfolio.value_by_asset(core.valuator).items()},
+            "exposure": {"total_gbp": str(_q(exp["total"])), "by_exchange": {k: str(_q(v)) for k, v in exp["by_exchange"].items()},
+                         "by_asset": {k: str(_q(v)) for k, v in exp["by_asset"].items()}},
             "active_jobs": [j.to_dict() for j in core.active_jobs],
             "counters": dict(core.counters), "risk_rejections": dict(core.risk_rejections),
             "rejection_counts": dict(core.rejection_counts), "risk": core.risk.status(now),
