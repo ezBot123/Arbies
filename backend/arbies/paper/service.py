@@ -155,6 +155,17 @@ class PaperTrader:
             await self._persist_session(status="stopped", stopped_at=utcnow())
         return self.snapshot()
 
+    async def suspend(self) -> None:
+        """Shutdown hook: persist an unfinished session as *paused* so ``restore`` resumes it after a restart."""
+        if self.status not in ("running", "paused"):
+            return
+        if self._task:
+            self._task.cancel()
+            await asyncio.gather(self._task, return_exceptions=True)
+        await self._flush_trades()
+        self.status = "paused"
+        await self._persist_session(status="paused")
+
     async def reset(self) -> dict:
         await self.stop()
         self.core = None

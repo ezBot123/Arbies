@@ -19,6 +19,7 @@ import ccxt.pro as ccxtpro
 from arbies.core.models import D, DataSource, MarketRules, OrderBook, utcnow
 from arbies.logging_setup import get_logger
 from arbies.market_data.base import BookCallback, ConnStatus, EventCallback, ExchangeAdapter, ExchangeHealth
+from arbies.market_data.ccxt_config import ccxt_config
 
 log = get_logger(__name__)
 
@@ -26,6 +27,12 @@ log = get_logger(__name__)
 WS_LIMITS: dict[str, int | None] = {"kraken": 25, "bitstamp": None, "coinbase": None, "gemini": None}
 REST_LIMITS: dict[str, int | None] = {"kraken": 25, "bitstamp": None, "coinbase": 50, "gemini": 25}
 WS_FAILURES_BEFORE_REST = 3
+# A WebSocket diff-book that stays crossed this long has drifted from the exchange (missed deletions):
+# drop it and resubscribe so CCXT rebuilds it from a fresh snapshot. Brief crossings are left alone.
+CROSSED_RESYNC_S = 5.0
+# A symbol that keeps drifting despite resubscribing is polled over REST instead.
+RESYNCS_BEFORE_REST = 3
+RESYNC_WINDOW_S = 120.0
 
 
 def _step_from_precision(value, mode: int) -> Decimal | None:
@@ -56,6 +63,8 @@ class CcxtAdapter(ExchangeAdapter):
         self._running = False
         self._rules: dict[str, MarketRules] = {}
         self._rest_mode: set[str] = set()
+        self._crossed_since: dict[str, float] = {}
+        self._resync_times: dict[str, list[float]] = {}
 
     # ------------------------------------------------------------------ lifecycle
     def _create(self):
@@ -66,7 +75,7 @@ class CcxtAdapter(ExchangeAdapter):
             cls = getattr(ccxt.async_support, self.exchange_id)
             self.use_websocket = False
             self.health.transport = "rest"
-        return cls({"enableRateLimit": True, "newUpdates": False, "timeout": 15000})
+        return cls(ccxt_config(enableRateLimit=True, newUpdates=False, timeout=15000))
 
     async def start(self) -> None:
         self._running = True
@@ -135,8 +144,9 @@ class CcxtAdapter(ExchangeAdapter):
             min_amount=D((limits.get("amount") or {}).get("min")) if (limits.get("amount") or {}).get("min") else None,
             min_cost=D((limits.get("cost") or {}).get("min")) if (limits.get("cost") or {}).get("min") else None,
             active=m.get("active", True) is not False,
-            # public fee schedule from CCXT (base tier); account-specific tiers need credentials
-            fee_source="exchange_public_schedule" if m.get("taker") is not None else "default",
+            # base-tier rate from CCXT's bundled fee table, not fetched from the exchange (Kraken's public API no
+            # longer publishes fee tiers). It can lag exchange changes; account-specific tiers need credentials.
+            fee_source="ccxt_default_schedule" if m.get("taker") is not None else "default",
         )
 
     def market_rules(self) -> dict[str, MarketRules]:
@@ -183,6 +193,45 @@ class CcxtAdapter(ExchangeAdapter):
         self.health.updates += 1
         self.on_book(ob)
 
+    @staticmethod
+    def _raw_crossed(raw: dict) -> bool:
+        bids, asks = raw.get("bids") or [], raw.get("asks") or []
+        return bool(bids and asks and bids[0][0] >= asks[0][0])
+
+    async def _resync_if_stuck_crossed(self, ex, symbol: str, raw: dict) -> bool:
+        """Resubscribe a WebSocket book that has stayed crossed for CROSSED_RESYNC_S. Returns True if resynced."""
+        if not self._raw_crossed(raw):
+            self._crossed_since.pop(symbol, None)
+            return False
+        since = self._crossed_since.setdefault(symbol, time.monotonic())
+        if time.monotonic() - since < CROSSED_RESYNC_S:
+            return False
+        self._crossed_since.pop(symbol, None)
+        now = time.monotonic()
+        recent = [t for t in self._resync_times.get(symbol, []) if now - t < RESYNC_WINDOW_S] + [now]
+        self._resync_times[symbol] = recent
+        self.health.resyncs += 1
+        msg = f"book crossed for >{CROSSED_RESYNC_S:.0f}s (bid {raw['bids'][0][0]} >= ask {raw['asks'][0][0]}); resubscribing"
+        log.warning("order book resync", exchange=self.exchange_id, symbol=symbol, detail=msg)
+        self.on_event(self.exchange_id, symbol, "resync", msg)
+        if len(recent) < RESYNCS_BEFORE_REST and ex.has.get("unWatchOrderBook"):
+            try:
+                await asyncio.wait_for(ex.un_watch_order_book(symbol), timeout=10)
+                return True
+            except Exception as e:  # noqa: BLE001
+                self._error(symbol, f"unWatchOrderBook failed: {type(e).__name__}: {e}")
+        # cannot resubscribe cleanly, or it keeps drifting: poll this symbol over REST instead
+        if ex.has.get("unWatchOrderBook"):
+            try:
+                await asyncio.wait_for(ex.un_watch_order_book(symbol), timeout=10)
+            except Exception:  # noqa: BLE001 - best effort; REST polling does not depend on it
+                pass
+        self._rest_mode.add(symbol)
+        self.health.transport = "websocket+rest"
+        self.on_event(self.exchange_id, symbol, "fallback_rest",
+                      f"WebSocket book kept crossing ({len(recent)} resyncs in {RESYNC_WINDOW_S:.0f}s); switched to REST polling")
+        return True
+
     async def _symbol_loop(self, symbol: str) -> None:
         ws_failures = 0
         backoff = 1.0
@@ -192,6 +241,8 @@ class CcxtAdapter(ExchangeAdapter):
                 if self.use_websocket and symbol not in self._rest_mode and ex.has.get("watchOrderBook"):
                     raw = await ex.watch_order_book(symbol, WS_LIMITS.get(self.exchange_id))
                     ws_failures = 0
+                    if await self._resync_if_stuck_crossed(ex, symbol, raw):
+                        continue
                 else:
                     raw = await ex.fetch_order_book(symbol, REST_LIMITS.get(self.exchange_id))
                     await asyncio.sleep(self.rest_interval_s)

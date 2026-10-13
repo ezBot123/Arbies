@@ -80,7 +80,7 @@ class Market(Base):
     quote: Mapped[str] = mapped_column(String(16))
     taker_fee: Mapped[Decimal | None]
     maker_fee: Mapped[Decimal | None]
-    fee_source: Mapped[str] = mapped_column(String(16), default="default")
+    fee_source: Mapped[str] = mapped_column(String(32), default="default")
     amount_step: Mapped[Decimal | None]
     price_step: Mapped[Decimal | None]
     min_amount: Mapped[Decimal | None]
@@ -116,7 +116,7 @@ class ConnectionEvent(Base):
     ts: Mapped[datetime] = mapped_column(default=utcnow, index=True)
     exchange: Mapped[str] = mapped_column(String(32), index=True)
     symbol: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    event: Mapped[str] = mapped_column(String(32))  # connected | disconnected | error | reconnecting | stale
+    event: Mapped[str] = mapped_column(String(32))  # connected | disconnected | error | reconnecting | resync | fallback_rest | stale
     detail: Mapped[str] = mapped_column(Text, default="")
 
 

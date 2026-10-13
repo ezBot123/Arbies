@@ -29,6 +29,7 @@ class ExchangeHealth:
     updates: int = 0
     errors: int = 0
     reconnects: int = 0
+    resyncs: int = 0
     last_error: str = ""
     last_error_at: datetime | None = None
     clock_offset_ms: float | None = None  # exchange time - local time
@@ -62,6 +63,7 @@ class ExchangeHealth:
             "updates": self.updates,
             "errors": self.errors,
             "reconnects": self.reconnects,
+            "resyncs": self.resyncs,
             "last_error": self.last_error,
             "last_error_at": self.last_error_at.isoformat() if self.last_error_at else None,
             "clock_offset_ms": self.clock_offset_ms,

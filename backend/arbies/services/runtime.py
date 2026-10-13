@@ -110,7 +110,7 @@ class Runtime:
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
-        await self.paper.stop() if self.paper.status == "running" else None
+        await self.paper.suspend()  # kept as paused, restored on next start
         await self.scanner.stop()
         if self.recorder:
             await self.recorder.stop()

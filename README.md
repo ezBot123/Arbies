@@ -17,7 +17,7 @@ It does this by:
 
 Initial research release. Milestones 1–8 are implemented. **Milestone 7, live trading preparation, is deliberately left inactive:** the order-management, gating and reconciliation code exists and is tested, but automated real-money execution of strategies is not wired up. See [PROGRESS.md](PROGRESS.md) for exactly what is done, what has been verified, and what remains.
 
-One limitation of the development environment matters for reading the results. The network policy blocked every exchange API, so **no live exchange connection has been verified end to end**. The CCXT adapters are covered by mocked tests, and the whole stack has been exercised with clearly labelled synthetic data. On a machine with internet access, set `ARBIES_MARKET_DATA_MODE=live` to use real public market data. That mode needs no API keys.
+**Live public market data is verified end to end** (2026-10-13). The three exchanges were Kraken, Coinbase and Bitstamp, with real order-book streams recorded to PostgreSQL. The dashboard was checked against the books, and a £500 paper session ran on that data. See PROGRESS.md, Session 5. Two caveats remain. The fee rates are CCXT defaults, not your account's tier: check them and set `fee_overrides`. Live trading is still disabled. `ARBIES_MARKET_DATA_MODE=live` needs no API keys.
 
 ## Quick start (one command)
 

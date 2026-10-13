@@ -88,7 +88,7 @@ Scanning, risk checks, execution and accounting are plain deterministic code. Ag
 - **Cross-exchange:** taker fees are charged in each leg's quote currency.
 - **Triangular:** fees are charged in the currency received on each leg.
 
-Fee rates come from CCXT's public base-tier schedule, from a configured override, or from a default of 0.26%. The source is recorded on each market (`fee_source`). Account-specific fee tiers need credentials and are not fetched automatically.
+Fee rates come from CCXT's bundled base-tier fee table (`fee_source=ccxt_default_schedule`), from a configured override (`fee_overrides`), or from a default of 0.26%. The bundled table is **not** fetched from the exchange and can lag fee changes. Kraken's public API, for example, no longer publishes fee tiers. Check the rates against each exchange's current fee page and set `fee_overrides` where they differ. Account-specific fee tiers need credentials and are not fetched automatically.
 
 ## Frontend
 

@@ -136,3 +136,20 @@ async def test_paper_session_not_restored_across_data_sources(db, settings):
     assert (await pt2.sessions())[0]["status"] == "stopped"
     # an empty hub reports no data source rather than claiming live data
     assert MarketDataHub(live).data_source() == "none"
+
+
+async def test_running_paper_session_survives_graceful_restart(db, settings):
+    hub = MarketDataHub(settings)
+    feed_synthetic(hub)
+    pt = PaperTrader(db, hub, settings)
+    await pt.start()
+    sid, balances = pt.session_id, pt.core.portfolio.snapshot()
+    await pt.suspend()  # what Runtime.stop() does on shutdown
+    assert (await pt.sessions())[0]["status"] == "paused"
+    pt2 = PaperTrader(db, hub, settings)
+    await pt2.restore()
+    assert pt2.status == "paused" and pt2.session_id == sid
+    assert pt2.core.portfolio.snapshot() == balances
+    await pt2.start()  # resumes the same session rather than opening a new one
+    assert pt2.status == "running" and pt2.session_id == sid
+    await pt2.stop()

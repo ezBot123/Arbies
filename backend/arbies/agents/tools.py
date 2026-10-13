@@ -283,7 +283,7 @@ async def get_risk_events(rt, args: LimitArgs, agent: str):
 @registry.register("get_recent_errors", "Recent connection events/errors and system warnings.", Permission.READ,
                    LimitArgs)
 async def get_recent_errors(rt, args: LimitArgs, agent: str):
-    events = [e for e in list(rt.hub.events)[::-1] if e["event"] in ("error", "reconnecting", "fallback_rest",
+    events = [e for e in list(rt.hub.events)[::-1] if e["event"] in ("error", "reconnecting", "fallback_rest", "resync",
                                                                      "disconnected")]
     return {"connection_events": events[: args.limit], "recorder": rt.recorder.status() if rt.recorder else None,
             "scanner": rt.scanner.stats}

@@ -98,7 +98,7 @@ async def system_events(limit: int = Query(100, le=500), rt=Depends(get_rt)):
         risks = (await s.execute(select(RiskEventRecord).order_by(RiskEventRecord.id.desc()).limit(limit))).scalars().all()
     events = ([{"ts": r.ts.isoformat(), "type": "system", "level": r.level, "source": r.component, "message": r.message}
                for r in logs]
-              + [{"ts": r.ts.isoformat(), "type": "connection", "level": "warning" if r.event in ("error", "reconnecting") else "info",
+              + [{"ts": r.ts.isoformat(), "type": "connection", "level": "warning" if r.event in ("error", "reconnecting", "resync") else "info",
                   "source": r.exchange + (f" {r.symbol}" if r.symbol else ""), "message": f"{r.event}: {r.detail}"}
                  for r in conns]
               + [{"ts": r.ts.isoformat(), "type": "risk", "level": r.severity, "source": f"risk ({r.mode})",

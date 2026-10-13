@@ -38,6 +38,10 @@ Two caveats from that run:
 4. Firewall: allow only 22 and 443, and keep 8000 and 5432 closed.
 5. If you add exchange API keys, restrict them to the VPS IP and keep withdrawals disabled.
 
+### Outbound proxies
+
+Some networks only allow HTTPS out through an explicit proxy, such as corporate networks or sandboxed cloud containers. Arbies' exchange clients respect the standard environment there: `HTTPS_PROXY` (and `NO_PROXY`) covers REST and the CCXT Pro WebSocket proxy option, and `SSL_CERT_FILE` (or `REQUESTS_CA_BUNDLE`) supplies a TLS-inspecting proxy's CA. TLS verification is never turned off. With none of these set, connections are direct. See `backend/arbies/market_data/ccxt_config.py`.
+
 ## Database
 
 - **Backups:**

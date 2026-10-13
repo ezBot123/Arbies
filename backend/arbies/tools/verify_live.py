@@ -23,6 +23,7 @@ import ccxt.pro as ccxtpro
 
 from arbies.config import get_settings
 from arbies.core.models import utcnow
+from arbies.market_data.ccxt_config import ccxt_config
 
 REST_LIMITS = {"kraken": 25, "coinbase": 50, "gemini": 25}
 WS_LIMITS = {"kraken": 25}
@@ -61,7 +62,7 @@ def _summ(ob: dict) -> str:
 
 async def check_exchange(ex_id: str, symbols: list[str], ws_seconds: float) -> ExchangeReport:
     rep = ExchangeReport(ex_id)
-    rest = getattr(ccxt_async, ex_id)({"enableRateLimit": True, "timeout": 15000})
+    rest = getattr(ccxt_async, ex_id)(ccxt_config(enableRateLimit=True, timeout=15000))
     try:
         await rest.load_markets()
         rep.markets_loaded = True
@@ -86,7 +87,7 @@ async def check_exchange(ex_id: str, symbols: list[str], ws_seconds: float) -> E
     if not rep.available:
         return rep
     rep.ws_symbol = rep.available[0]
-    ws = getattr(ccxtpro, ex_id)({"enableRateLimit": True, "newUpdates": False})
+    ws = getattr(ccxtpro, ex_id)(ccxt_config(enableRateLimit=True, newUpdates=False))
     try:
         deadline = time.monotonic() + ws_seconds
         while time.monotonic() < deadline:

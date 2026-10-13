@@ -56,7 +56,9 @@ class LiveAccounts:
             ex = self._factory(exchange, creds)
         else:
             import ccxt.async_support as ccxt_async
-            cfg = {"apiKey": creds["apiKey"], "secret": creds["secret"], "enableRateLimit": True}
+
+            from arbies.market_data.ccxt_config import ccxt_config
+            cfg = ccxt_config(apiKey=creds["apiKey"], secret=creds["secret"], enableRateLimit=True)
             if creds.get("password"):
                 cfg["password"] = creds["password"]
             ex = getattr(ccxt_async, exchange)(cfg)
