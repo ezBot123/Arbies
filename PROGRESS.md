@@ -101,6 +101,13 @@ Fresh container, started from `293b917` on `claude/vigilant-ptolemy-9yuhtw`. So 
 Conclusion: the session restart did not help. The environment's network policy still does not allow the exchange hosts. Retries stopped here, and no attempt was made to work around the proxy.
 To unblock: in the cloud environment settings, under Network access, either choose a broader access level or add the six hosts above under Allowed domains (leave "Allow package managers" ticked). See https://code.claude.com/docs/en/cloud-environments#network-access. Then start a new session and run `cd backend && .venv/bin/python -m arbies.tools.verify_live`.
 
+### Session 4 update — 10:45 UTC re-check
+
+After a further settings change, the exchange hosts now pass the egress proxy. `curl` returned real responses: kraken 404/200, coinbase 301/200, bitstamp 200/426, all from the exchanges themselves, with no proxy 403s.
+
+`verify_live` still reports `0/3` (`ExchangeNotAvailable`). This is now a **client-side** issue: ccxt's async REST client uses aiohttp, and aiohttp ignores `HTTPS_PROXY` unless `trust_env` is set. The WebSocket client likewise needs the proxy passed explicitly (`wssProxy`), so the Python process is trying to connect directly and fails.
+Proposed fix, not yet applied or tested: build every ccxt client (`market_data/ccxt_adapter.py`, `tools/verify_live.py`) with `aiohttp_trust_env=True` and, when `HTTPS_PROXY` is set, `wssProxy=$HTTPS_PROXY`. The test run of this change was held for user approval by the session's permission system. Nothing synthetic was substituted, and live trading is still disabled.
+
 ## Environment limitations encountered
 
 - Outbound access to exchange APIs (kraken, coinbase, bitstamp, gemini, bitfinex, binance, okx, bybit) was blocked by the sandbox network proxy, which returned 403 on CONNECT. Nothing was mocked in place of real results: synthetic data is labelled as such everywhere.
