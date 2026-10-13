@@ -68,6 +68,21 @@ Verified in the cloud development container:
 
 Hosts the public feeds need: `api.kraken.com`, `ws.kraken.com`, `api.coinbase.com`, `advanced-trade-ws.coinbase.com`, `www.bitstamp.net`, `ws.bitstamp.net`.
 
+## Session 3 — connectivity re-check after network settings change (2026-10-13 10:32 UTC)
+
+The network access settings were reported as updated. Re-tested from the same running container, from the latest commit on `claude/vigilant-ptolemy-9yuhtw`:
+
+| Check | Result |
+|---|---|
+| HTTPS CONNECT to `api.kraken.com`, `ws.kraken.com`, `api.coinbase.com`, `advanced-trade-ws.coinbase.com`, `www.bitstamp.net`, `ws.bitstamp.net` | ❌ All still **403 Forbidden** from the egress proxy (policy denial) |
+| `python -m arbies.tools.verify_live --recording` | ❌ 0/3 exchanges; 0 `live_recorded` snapshots |
+| Dashboard with genuine data / real opportunities | ⏸ Not possible without feeds |
+| £500 paper session on live data | ⏸ Not started — it requires live books; nothing synthetic was substituted |
+| Live trading | ✅ Still disabled |
+
+Likely cause: this container started under the previous policy, and network-policy changes take effect in a **new** session. Next step: start a new session on this environment and run
+`./scripts/setup_local.sh` (or `cd backend && .venv/bin/python -m arbies.tools.verify_live --recording` after `make dev-backend`), then continue with the dashboard and the paper-trading checks.
+
 ## Environment limitations encountered
 
 - Outbound access to exchange APIs (kraken, coinbase, bitstamp, gemini, bitfinex, binance, okx, bybit) was blocked by the sandbox network proxy, which returned 403 on CONNECT. Nothing was mocked in place of real results: synthetic data is labelled as such everywhere.
