@@ -37,7 +37,7 @@ export default function Overview() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <Card title="Exchange health" className="xl:col-span-2" bodyClass="p-0">
+        <Card title="Exchange health" className="min-w-0 xl:col-span-2" bodyClass="p-0 overflow-x-auto">
           <table className="data">
             <thead><tr><th>Exchange</th><th>Status</th><th>Transport</th><th className="r">Updates</th><th className="r">Errors</th><th className="r">Reconnects</th><th className="r">Latency</th><th>Stale / unavailable</th><th>Last error</th></tr></thead>
             <tbody>

@@ -19,7 +19,26 @@ Initial research release. Milestones 1–8 are implemented. **Milestone 7, live 
 
 One limitation of the development environment matters for reading the results. The network policy blocked every exchange API, so **no live exchange connection has been verified end to end**. The CCXT adapters are covered by mocked tests, and the whole stack has been exercised with clearly labelled synthetic data. On a machine with internet access, set `ARBIES_MARKET_DATA_MODE=live` to use real public market data. That mode needs no API keys.
 
-## Quick start (local development)
+## Quick start (one command)
+
+On your own computer (macOS, Linux or WSL2) with internet access:
+
+```bash
+git clone https://github.com/ezBot123/Arbies && cd Arbies
+git checkout claude/vigilant-ptolemy-9yuhtw
+./scripts/setup_local.sh            # or: ./scripts/setup_local.sh --docker  (PostgreSQL in Docker)
+make dev-backend                    # dashboard + API on http://localhost:8000
+```
+
+The script checks prerequisites, creates a git-ignored `.env` with generated secrets (live trading **off**), installs dependencies, prepares PostgreSQL, applies migrations, runs the tests and finally verifies the real exchange feeds. After the backend has run for a few minutes, confirm that real data is being recorded:
+
+```bash
+cd backend && .venv/bin/python -m arbies.tools.verify_live --recording
+```
+
+The verifier uses public endpoints only, never falls back to synthetic data and prints PASS/FAIL per exchange with the actual error.
+
+## Quick start (manual)
 
 Requirements: Python 3.12+, Node 22+ and PostgreSQL 16 (or Docker).
 
@@ -48,7 +67,7 @@ The container applies database migrations on start and serves both the API and t
 ## Testing
 
 ```bash
-make test        # 80 backend tests (SQLite)
+make test        # 81 backend tests (SQLite)
 make test-pg     # the same suite against PostgreSQL
 make lint        # ruff + TypeScript + ESLint
 make audit       # pip-audit + npm audit

@@ -84,7 +84,9 @@ else
   $PSQL -tAc "select 1 from pg_database where datname='arbies'" | grep -q 1 || $PSQL -qc "create database arbies owner arbies"
   ok "database 'arbies' ready"
 fi
-(cd backend && .venv/bin/alembic upgrade head >/dev/null && .venv/bin/alembic check >/dev/null)
+if ! out=$(cd backend && .venv/bin/alembic upgrade head 2>&1 && .venv/bin/alembic check 2>&1); then
+  echo "$out" | tail -20; echo "  ! migrations failed (check ARBIES_DATABASE_URL in .env)"; exit 1
+fi
 ok "migrations applied and match the models"
 
 info "5. Tests"

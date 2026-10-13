@@ -36,11 +36,37 @@ Status as of the last session.
 | Strategy comparisons work | ✅ | Compare tab and API; reports by strategy and exchange |
 | Risk controls tested | ✅ | 20+ risk, gate and permission tests |
 | Dashboard displays real application data | ✅ | Every page screenshotted against a running backend; no hard-coded metrics |
-| Tests run successfully | ✅ | 80 passed on SQLite and on PostgreSQL 16 |
+| Tests run successfully | ✅ | 81 passed on SQLite and on PostgreSQL 16 |
 | Documentation complete | ✅ | README, ARCHITECTURE, DEVELOPMENT, BACKTESTING, STRATEGIES, RISK_MANAGEMENT, SECURITY, DEPLOYMENT |
 | Live trading remains disabled | ✅ | Env flag defaults to false; arming refused in tests; no strategy → live path |
 
 **Overall: not yet declared complete.** Real exchange connectivity (Kraken, Coinbase and Bitstamp public feeds) still needs to be verified on a machine with internet access. Everything else above has been verified.
+
+## Session 2 — local setup and live-data verification (2026-10-13)
+
+Work done:
+- Added `scripts/setup_local.sh` (prerequisites → `.env` with generated secrets and live trading off → deps → PostgreSQL → migrations → tests → live-feed check). Tested end to end from a clean clone.
+- Added `python -m arbies.tools.verify_live [--recording]`: public-endpoint check per exchange (markets, REST order books, WebSocket updates, clock offset) plus a DB check for `live_recorded` snapshots. It never uses synthetic data.
+- Fixed: `.env` at the repo root (the documented location) was ignored when the backend ran from `backend/`.
+- Fixed: the setup flow sourced `.env` into the shell, which mangled JSON list values; inline comments were also moved out of `.env.example` values.
+- Fixed: a paper session recorded on synthetic data could be restored after switching to live data. Sessions are now only restored on the same data provenance (regression test added).
+- Fixed: the header badge said "LIVE DATA" before any real book had arrived; it now shows "NO DATA" until real data exists.
+- Fixed: the exchange-health table overflowed its card on the Overview page.
+
+Verified in the cloud development container:
+
+| Check | Result |
+|---|---|
+| PostgreSQL 16 running; migrations at head; `alembic check` clean | ✅ |
+| Backend tests | ✅ 81 passed |
+| Frontend type-check and production build | ✅ |
+| Backend starts in **live** mode, auth works, dashboard served | ✅ |
+| Live trading disabled (`ARBIES_LIVE_TRADING_ENABLED=false`, not armed) | ✅ |
+| Exchange feeds (kraken, coinbase, bitstamp) | ❌ **Blocked** — the container's network policy returns 403 for the exchange hosts |
+| Live-data recording | ❌ Not possible without feeds (0 rows recorded; nothing synthetic substituted) |
+| Dashboard truthfully shows the outage ("NO DATA", 0/3 healthy, real error messages) | ✅ |
+
+Hosts the public feeds need: `api.kraken.com`, `ws.kraken.com`, `api.coinbase.com`, `advanced-trade-ws.coinbase.com`, `www.bitstamp.net`, `ws.bitstamp.net`.
 
 ## Environment limitations encountered
 
