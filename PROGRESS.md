@@ -162,7 +162,7 @@ Question: *if Arbies had started on 1 Jan 2025 with £500 and £100 a month, wha
 - `/api/historical/*`
 - The Historical Simulator dashboard page
 - A read-only Historical Research Agent
-- 32 new tests, 118 in total, mapped to the 12 validation requirements
+- 29 new tests, 118 in total, mapped to the 12 validation requirements
 
 **Fixed:**
 - Data retention was deleting imported history.
