@@ -168,6 +168,154 @@ skipped, never filled.
 
 Importer: `tests/test_historical_importer.py`. Agent sealing: `test_historical_agent_reads_results_but_test_window_is_sealed`.
 
+## Results: £500 + £100/month, 1 Jan 2025 → 13 Oct 2026 (simulation #4)
+
+Run on 2026-10-13. Result hash `006aa79edda2038ae2a3dbf5342684bcff58c9b2af3bfcc759215ee9beed2955`. Every
+figure below comes from the stored simulation record. In the dashboard: Historical Simulator → #4.
+
+### A. Historical investment result: partial, not a full-period answer
+
+| | Value |
+|---|---:|
+| Initial investment | £500.00 |
+| Monthly contributions (21 × £100, 1 Feb 2025 → 1 Oct 2026) | £2,100.00 |
+| **Total personal contributions** | **£2,600.00** |
+| **Trading profit / loss (observed periods only)** | **£0.00** (no trades) |
+| Market / inventory P&L (BTC, ETH and USD held on the exchanges) | −£69.94 |
+| Deposit conversion costs | −£9.75 |
+| **Ending portfolio value** (at 12 Oct 2026 daily closes) | **£2,520.31** |
+| Time-weighted return (excludes deposits) | −11.51% |
+| Money-weighted return (XIRR, annual) | −2.95% |
+| Maximum drawdown (time-weighted index) | 35.08% |
+| Best / worst net position (value − contributions) | +£256.43 (7 Oct 2025) / −£440.30 (1 Jul 2026) |
+
+Trading could be observed for **532.8 of 15,624 hours (3.41%)**: the 22 free first-of-month Tardis days plus
+about 5 hours of Arbies' own live recording. The £2,520.31 is therefore *contributions plus the genuine price
+movement of the inventory, plus zero trading P&L where trading was observable*. It does **not** say what Arbies
+would have earned on the other 629 days, and nothing has been extrapolated to them.
+
+### B. Monthly performance (combined strategy C, moderate preset, base fees)
+
+Every month's trading P&L comes from its one observed day, the 1st of the month. October 2026 also includes
+13 October.
+
+| Month | Personal deposits | Trading P&L (observed day) | Fees | Market P&L | Ending portfolio |
+|---|---:|---:|---:|---:|---:|
+| January 2025 | £500 | £0.00 | £0.00 | +£14.57 | £512.69 |
+| February 2025 | £100 | £0.00 | £0.00 | −£82.16 | £530.16 |
+| March 2025 | £100 | £0.00 | £0.00 | −£37.89 | £591.89 |
+| April 2025 | £100 | £0.00 | £0.00 | +£7.30 | £698.82 |
+| May 2025 | £100 | £0.00 | £0.00 | +£76.82 | £875.26 |
+| June 2025 | £100 | £0.00 | £0.00 | −£12.65 | £962.23 |
+| July 2025 | £100 | £0.00 | £0.00 | +£177.17 | £1,239.03 |
+| August 2025 | £100 | £0.00 | £0.00 | +£28.56 | £1,367.22 |
+| September 2025 | £100 | £0.00 | £0.00 | −£4.00 | £1,462.84 |
+| October 2025 | £100 | £0.00 | £0.00 | −£24.36 | £1,538.11 |
+| November 2025 | £100 | £0.00 | £0.00 | −£186.94 | £1,450.79 |
+| December 2025 | £100 | £0.00 | £0.00 | −£35.04 | £1,515.37 |
+| January 2026 | £100 | £0.00 | £0.00 | −£125.60 | £1,489.39 |
+| February 2026 | £100 | £0.00 | £0.00 | −£107.24 | £1,481.78 |
+| March 2026 | £100 | £0.00 | £0.00 | +£47.78 | £1,629.19 |
+| April 2026 | £100 | £0.00 | £0.00 | +£35.89 | £1,764.70 |
+| May 2026 | £100 | £0.00 | £0.00 | −£47.17 | £1,817.16 |
+| June 2026 | £100 | £0.00 | £0.00 | −£157.09 | £1,759.70 |
+| July 2026 | £100 | £0.00 | £0.00 | +£67.42 | £1,926.75 |
+| August 2026 | £100 | £0.00 | £0.00 | +£234.38 | £2,260.76 |
+| September 2026 | £100 | £0.00 | £0.00 | +£125.42 | £2,485.80 |
+| October 2026 (to 13th) | £100 | £0.00 | £0.00 | −£65.11 | £2,520.31 |
+
+Each month also had £0.375 of deposit conversion cost (£1.875 in January). Market P&L is the revaluation of
+inventory at genuine Kraken daily closes. The figures reconcile exactly: value change −£79.69 = −£9.75
+conversion − £69.94 market + £0.00 trading.
+
+### C. Strategy comparison (observed periods only)
+
+| Strategy | Evaluations | Price-gap episodes | Passed all checks | Trades | Net trading P&L |
+|---|---:|---:|---:|---:|---:|
+| A: cross-exchange | 27.3M | 752,214 | 0 | 0 | £0.00 |
+| B: triangular | 21.8M | 248,224 | 0 | 0 | £0.00 |
+| C: combined (shared capital) | 49.1M | 1,000,438 | 0 | 0 | £0.00 |
+
+Why the combined strategy rejected every episode:
+
+| Reason | Episodes |
+|---|---:|
+| Fees exceed profit | 882,613 |
+| Below the exchange minimum order | 126,647 |
+| Insufficient depth | 117,584 |
+| Stale data | 6,996 |
+| Exchange unavailable | 2,675 |
+| Insufficient inventory | 3 |
+| Profitable but below the 0.30% threshold | 3 |
+
+No strategy outperformed another.
+
+**Strategy D, parameters and fees.** None of these variants traded:
+
+| Variant | Trades |
+|---|---:|
+| Conservative (0.50%, £15) | 0 |
+| Moderate (0.30%, £25) | 0 |
+| Aggressive (0.10%, £50, 100 ms) | 0 |
+| `low` fees (Coinbase 0.60% taker, Bitstamp 0%) | 0 |
+| `high` fees (+25%) | 0 |
+
+The train/test split (train up to 2026-02-01 07:41 UTC) selected *conservative* only by the tie rule, and its
+test-window P&L was £0.00. Because nothing traded, the study cannot tell the presets apart.
+
+### D. Benchmarks (same contribution dates)
+
+| Portfolio | Ending value | Net gain | XIRR | Market risk |
+|---|---:|---:|---:|---|
+| A: cash, no interest | £2,600.00 | £0.00 | 0.00% | none |
+| B: Bitcoin buy and hold (0.03951985 BTC, £11.60 fees) | £2,447.13 | −£152.87 | −5.69% | full BTC exposure (TWR −17.81%) |
+| C, D, E: Arbies A / B / C | £2,520.31 | −£79.69 | −2.95% | inventory exposure (TWR −11.51%, max drawdown 35%) |
+
+The Bitcoin benchmark was recomputed independently from the stored Kraken closes and matched to 8 decimal
+places. Arbies did better than Bitcoin only because half its money sat in GBP and USD, not because of trading.
+Arbitrage is meant to be market-neutral per trade, but the inventory it must hold on every exchange is not.
+
+### E. Data quality and coverage
+
+| Data | Coverage | Quality |
+|---|---|---|
+| Tardis `book_snapshot_5`: Kraken, Coinbase and Bitstamp × BTC/USD, ETH/USD, BTC/GBP, ETH/GBP, ETH/BTC | **22 days**: the 1st of every month from Jan 2025 to Oct 2026. 330 of 330 files, 18.6 GB, 1.087 billion rows → 20.96M one-second snapshots | 0 crossed books, 0 out-of-order rows, 0 invalid rows, 0 duplicates. 295 gaps over 30 s (Kraken 166, Bitstamp 97, Coinbase 32), mostly on the quieter GBP and ETH/BTC books |
+| Arbies live recording | 13 Oct 2026, about 5 h | Bitstamp crossed-book episodes handled by resync, as described in Session 5 |
+| Daily reference candles (Kraken, plus Bitstamp and Coinbase cross-checks) | Every day, 1 Dec 2024 → 13 Oct 2026 | Complete |
+| 1-minute candles (Bitstamp, Coinbase: BTC/USD, BTC/GBP, ETH/USD) | Every minute of the period (Coinbase omits minutes without trades) | Complete |
+| **Missing** | **629 of 651 days of order books.** Tardis serves days other than the 1st only to paying customers, which would need your approval. Kraken spot is listed under `XBT-*` ids before 10 Jul 2026. | — |
+
+**Candle screening across all 651 days.** This is an indicator only: last-trade closes up to 59 s apart, with
+no depth. It shows whether the missing days probably held opportunities.
+
+| Bitstamp vs Coinbase | Minutes compared | Median gap | 99th percentile | Minutes above base / low fees |
+|---|---:|---:|---:|---:|
+| BTC/USD | 928,421 | 0.008% | 0.051% | 11 / 28 |
+| BTC/GBP | 197,348 | 0.029% | 0.262% | 17 / 271 |
+| ETH/USD | 900,751 | 0.011% | 0.097% | 14 / 39 |
+
+The fee-beating minutes cluster in a few market crashes. The largest were 21:17–21:35 UTC on 10 Oct 2025
+(BTC up to 4.3%) and 02:23–02:25 UTC on 3 Feb 2025 (ETH up to 5.9%). Those moments fall outside the free
+order-book days, and they are when real books are thinnest and slowest. Over 21 months, the total excess over
+base fees came to about 44 percentage points across all three pairs. At £25 per trade, that would be on the
+order of £10, *if* every candidate had been executable, which candles cannot show. This is not a profit
+estimate.
+
+**Reliability:**
+- The "no trading profit on observed days" finding rests on 21 million genuine order books and holds under
+  every parameter and fee scenario.
+- The full-period candle screening points the same way.
+- The fee schedules partly rest on secondary sources (shown per entry). The `low` scenario, with the most
+  favourable figures found, still produced no trades.
+
+### F. What it would take to answer the question completely
+
+1. **Continuous Level 2 data** for all 651 days, for example a paid Tardis subscription. This is not purchased,
+   and it needs your explicit approval and a cost check. Alternatively, buy only the days the candle screening
+   flags, such as 10 Oct 2025 and 3 Feb 2025, to test the best-case moments cheaply.
+2. **Account-specific fee tiers** confirmed from statements.
+3. **Measured latency** on your own infrastructure. Today's model uses a configured 100–500 ms.
+
 ## Limitations
 
 - **Free order-book data covers 22 sampled days.** A sampled day says nothing about the days around it, and

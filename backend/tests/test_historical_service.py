@@ -118,7 +118,7 @@ async def test_historical_agent_reads_results_but_test_window_is_sealed(db, sett
     assert all(not k.startswith("test_") for row in sim["parameter_study"]["rows"] for k in row)
     assert "chosen_test_pnl_gbp" not in sim["parameter_study"]
     report = await spec.analyze(gw, {})
-    assert "PARTIAL" in report.summary and any("Obtain historical order-book data" in r.title for r in report.recommendations)
+    assert "PARTIAL" in report.summary and any("Continuous historical order-book data" in r.title for r in report.recommendations)
     with pytest.raises(ToolPermissionError):  # read-only: cannot run backtests or alter anything
         await gw.call("run_backtest", {})
     # results are unchanged by the agent run

@@ -303,7 +303,11 @@ async def analyze_historical(gw: ToolGateway, inp: dict) -> AgentReport:
                         f"{s['trading']['opportunities_eligible']}.")
     if by_set:
         best = max(by_set.items(), key=lambda kv: kv[1])
-        findings.append(f"Best strategy set after costs (observed periods only): {best[0]} (£{best[1]:.4f}).")
+        if all(v == best[1] for v in by_set.values()):
+            findings.append(f"No strategy set outperformed another: all made £{best[1]:.4f} net trading P&L in the "
+                            "observed periods.")
+        else:
+            findings.append(f"Best strategy set after costs (observed periods only): {best[0]} (£{best[1]:.4f}).")
     b = sim["benchmarks"]
     findings.append(f"Benchmarks: cash £{_f(b['cash']['final_value_gbp']):.2f}; BTC buy-and-hold "
                     f"£{_f(b['btc']['final_value_gbp']):.2f} (full BTC price risk).")
@@ -319,16 +323,23 @@ async def analyze_historical(gw: ToolGateway, inp: dict) -> AgentReport:
                                         detail="Several historical fee entries rest on secondary sources. Confirm "
                                                "them from account statements and set custom fees.", severity="warning"))
     if not cov["continuous"]:
+        cov_data = await gw.call("get_historical_coverage")
+        have_imports = any(d["status"] == "completed" for d in cov_data["datasets"])
         recs.append(RecommendationDraft(
-            title="Obtain historical order-book data before drawing conclusions",
-            detail=("Trading was only observable in a tiny fraction of the period. Import genuine Level 2 data (e.g. "
-                    "Tardis.dev first-of-month samples, or a paid continuous dataset after explicit approval) and "
-                    "re-run. Do not extrapolate the observed sample."), severity="warning",
+            title="Continuous historical order-book data is needed for a full-period answer",
+            detail=(f"Trading was observable in {cov['overlap_pct']}% of the period. "
+                    + ("Imported free samples are already used; a full answer needs a continuous paid dataset "
+                       "(only after explicit approval of the cost), or targeted days around large market moves. "
+                       if have_imports else
+                       "Import genuine Level 2 data (e.g. Tardis.dev first-of-month samples) and re-run. ")
+                    + "Do not extrapolate the observed sample."), severity="warning",
             proposed_change={"action": "import_historical_data"}))
+    traded = any(v["summary"]["trading"]["trades"] for v in sim["variants"].values())
     recs.append(RecommendationDraft(
         title="Re-run the parameter study once more data exists",
-        detail="Select presets on the training window only and confirm on the unseen test window; the current "
-               "sample is too small for a meaningful split."))
+        detail=("Select presets on the training window only and confirm on the unseen test window. "
+                + ("No variant traded in either window, so the current split cannot distinguish presets."
+                   if not traded else "The current sample is small; treat the selection as provisional."))))
     return AgentReport(summary=f"Historical simulation {sim['id']}: {h['status']}.", findings=findings,
                        recommendations=recs,
                        metrics={"simulation_id": sim["id"], "overlap_pct": cov["overlap_pct"],

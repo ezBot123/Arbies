@@ -60,6 +60,7 @@ class HistoricalService:
         self.rules_for = rules_for  # async (exchanges, symbols) -> (rules, notes)
         self.code_revision = code_revision
         self.progress: dict[int, float] = {}
+        self.coverage_cache: dict = {}  # API-level short-lived cache of coverage reports
         self._tasks: set[asyncio.Task] = set()
 
     # ------------------------------------------------------------------ lifecycle

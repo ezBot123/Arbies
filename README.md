@@ -19,6 +19,8 @@ Initial research release. Milestones 1–8 are implemented. **Milestone 7, live 
 
 **Live public market data is verified end to end** (2026-10-13). The three exchanges were Kraken, Coinbase and Bitstamp, with real order-book streams recorded to PostgreSQL. The dashboard was checked against the books, and a £500 paper session ran on that data. See PROGRESS.md, Session 5. Two caveats remain. The fee rates are CCXT defaults, not your account's tier: check them and set `fee_overrides`. Live trading is still disabled. `ARBIES_MARKET_DATA_MODE=live` needs no API keys.
 
+**Historical investment simulator** (Session 6): £500 + £100/month from Jan 2025 replayed on 21M genuine Tardis order books (22 free first-of-month days). Result: no arbitrage trades cleared retail fees; see [HISTORICAL_SIMULATION.md](HISTORICAL_SIMULATION.md).
+
 ## Quick start (one command)
 
 On your own computer (macOS, Linux or WSL2) with internet access:

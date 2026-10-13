@@ -14,6 +14,7 @@ This file is kept up to date so development can resume in a later session.
 | 6 | Multi-agent intelligence | ✅ Done | Six agents with deterministic analyses on real system data; optional Anthropic or OpenAI-compatible LLM narrative; permissioned tool gateway; recommendations need a human decision; cost tracking and budget |
 | 7 | Live trading preparation | ✅ Infrastructure only · 🔒 inactive by design | Encrypted credentials, read-only balance access, live gate (env + arming + trade-permission credentials), order pre-validation, idempotent client ids, `SafeExchange` whitelist, emergency cancel-all, reconciliation, audit. Strategies are **not** wired to live execution. |
 | 8 | Hardening and deployment | ✅ Done | Migration round-trip validated, `alembic check` clean, Docker image built and run, dependency audits clean, deployment docs |
+| 9 | Historical investment simulator | ✅ Done | £500 + £100/month simulator, Tardis importer, reference prices, benchmarks, dashboard page, research agent (Session 6) |
 
 ## Definition of Done — verification record
 
@@ -142,6 +143,54 @@ The exchange hosts became reachable after the network settings were updated. The
 2. **Kraken WebSocket stalls in the cloud container.** About every 45–60 s, the Kraken v2 stream delivers nothing, neither data nor pongs, for about 12 s. CCXT then raises "ping-pong keepalive missing", and the adapter reconnects within 1–2 s. This reproduces in a standalone script with no app code, and asyncio debug mode showed no event-loop blocking. Coinbase and Bitstamp are unaffected, and the proxy recorded no relay failures. It is therefore probably specific to this network path. The staleness gate keeps those books out of trading. **Check on a local machine**: if it happens there too, consider REST fallback for Kraken or Kraken's v1 endpoint.
 3. Bitstamp ETH/USD and BTC/USD still re-drift occasionally. The resync and REST fallback contain it (5 resyncs and 1 REST fallback in 4 minutes).
 4. Quiet markets (Kraken USDC/USD, ETH/BTC) can exceed `max_data_age_ms=5000` between real updates and are then treated as stale. This is safe and conservative.
+
+## Session 6 — historical investment simulation (2026-10-13)
+
+Question: *if Arbies had started on 1 Jan 2025 with £500 and £100 a month, what would it be worth on 13 Oct
+2026?* Full method and results: [HISTORICAL_SIMULATION.md](HISTORICAL_SIMULATION.md).
+
+**Built:**
+- Contribution plans
+- Dated retail fee schedules, with source and verification status
+- TWR, XIRR and drawdown measures
+- The Tardis importer: resumable, de-duplicated, validated, with provenance
+- Exchange reference-price fetching
+- Coverage reporting
+- The long-horizon simulator, with strategies A, B and C, the parameter study, and the cash and BTC benchmarks
+- Candle screening
+- Resumable parallel replay
+- `/api/historical/*`
+- The Historical Simulator dashboard page
+- A read-only Historical Research Agent
+- 32 new tests, 118 in total, mapped to the 12 validation requirements
+
+**Fixed:**
+- Data retention was deleting imported history.
+- The backend's 2-hour background limit interrupted a run. Simulations are now resumable.
+
+**Data:**
+- Tardis free first-of-month samples, imported after `datasets.tardis.dev` was allowed: 330 files, 20.96M
+  snapshots, clean validation.
+- Daily and 1-minute candles from Kraken, Bitstamp and Coinbase.
+- Nothing purchased: Tardis days other than the 1st return 401 without a paid key.
+
+**Result (simulation #4):**
+- Contributions £2,600.00
+- Trading P&L £0.00, from 0 trades in 532.8 observed hours (3.41% of the period)
+- Inventory/market P&L −£69.94
+- Conversion costs −£9.75
+- **Ending value £2,520.31**
+- Benchmarks: cash £2,600.00, Bitcoin £2,447.13
+
+All 7 variants made 0 trades, including the aggressive preset and the low-fee case. 1.0M price-gap episodes were
+evaluated, and 882,613 were rejected because fees exceeded the gap. This is a **partial** result: 629 of 651
+days have no order-book data, and nothing was extrapolated to them.
+
+**Environment notes:**
+- The backend was stopped by the 2-hour background-task limit. It is not left running; start it with
+  `make dev-backend`.
+- Paper session #3 is stored as running and will be restored on the next start.
+- A PostgreSQL backend was OOM-killed once during profiling and recovered cleanly. Later runs are memory-bounded.
 
 ## Environment limitations encountered
 

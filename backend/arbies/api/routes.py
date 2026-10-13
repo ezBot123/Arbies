@@ -810,8 +810,16 @@ async def historical_coverage(start: datetime = Query(datetime(2025, 1, 1)), end
     start = start if start.tzinfo else start.replace(tzinfo=UTC)
     end = end or utcnow()
     end = end if end.tzinfo else end.replace(tzinfo=UTC)
+    # minute-level coverage over tens of millions of rows takes seconds; cache it briefly per window
+    key = (start.isoformat(), end.replace(second=0, microsecond=0).isoformat()[:15])
+    cache = rt.historical.coverage_cache
+    hit = cache.get(key)
+    if hit and (utcnow() - hit[0]).total_seconds() < 600:
+        return hit[1]
     rep = await coverage_report(rt.db, start, end)
     rep.pop("days", None)
+    cache.clear()
+    cache[key] = (utcnow(), rep)
     return rep
 
 
