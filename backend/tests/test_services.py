@@ -119,3 +119,20 @@ async def test_paper_trader_lifecycle(db, settings):
     assert pt2.status == "stopped"
     await pt.reset()
     assert pt.core is None
+
+
+async def test_paper_session_not_restored_across_data_sources(db, settings):
+    from arbies.config import MarketDataMode
+    synth = settings.model_copy(update={"market_data_mode": MarketDataMode.SYNTHETIC})
+    hub = MarketDataHub(synth)
+    feed_synthetic(hub)
+    pt = PaperTrader(db, hub, synth)
+    await pt.start()
+    await pt.pause()  # unfinished session recorded on synthetic data
+    live = settings.model_copy(update={"market_data_mode": MarketDataMode.LIVE})
+    pt2 = PaperTrader(db, MarketDataHub(live), live)
+    await pt2.restore()
+    assert pt2.core is None and pt2.status == "stopped"
+    assert (await pt2.sessions())[0]["status"] == "stopped"
+    # an empty hub reports no data source rather than claiming live data
+    assert MarketDataHub(live).data_source() == "none"

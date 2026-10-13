@@ -138,4 +138,10 @@ class MarketDataHub:
         return {k: ob for k, ob in self.books.items() if ob.age_ms(now) <= limit}
 
     def data_source(self) -> str:
+        """Provenance of the data currently held; 'none' until a real book has arrived."""
+        if not self.books:
+            return "none"
+        return {"live": "live_recorded", "synthetic": "synthetic", "off": "none"}[self.mode.value]
+
+    def configured_source(self) -> str:
         return {"live": "live_recorded", "synthetic": "synthetic", "off": "none"}[self.mode.value]

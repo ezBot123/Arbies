@@ -10,9 +10,12 @@ from __future__ import annotations
 from decimal import Decimal
 from enum import StrEnum
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class MarketDataMode(StrEnum):
@@ -27,7 +30,8 @@ class OperatingMode(StrEnum):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="ARBIES_", env_file=".env", extra="ignore")
+    # The repo-root .env (documented location) is read first; a .env in the working directory overrides it.
+    model_config = SettingsConfigDict(env_prefix="ARBIES_", env_file=(REPO_ROOT / ".env", ".env"), extra="ignore")
 
     env: str = "development"
     log_level: str = "INFO"

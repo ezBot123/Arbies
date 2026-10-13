@@ -171,6 +171,15 @@ class PaperTrader:
                                     .order_by(PaperSession.id.desc()).limit(1))).scalar_one_or_none()
         if sess is None:
             return
+        if sess.data_source != self.hub.configured_source():
+            # never continue a session on a different data provenance (e.g. synthetic -> live)
+            async with self.db.session() as s:
+                row = await s.get(PaperSession, sess.id)
+                row.status = "stopped"
+                row.stopped_at = utcnow()
+            log.warning("not restoring paper session recorded on different data source",
+                        session_id=sess.id, session_source=sess.data_source, current=self.hub.configured_source())
+            return
         cfg = PaperConfig(**sess.config)
         pf = Portfolio(keep_ledger=False)
         for row in sess.balances or []:
