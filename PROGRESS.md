@@ -83,6 +83,24 @@ The network access settings were reported as updated. Re-tested from the same ru
 Likely cause: this container started under the previous policy, and network-policy changes take effect in a **new** session. Next step: start a new session on this environment and run
 `./scripts/setup_local.sh` (or `cd backend && .venv/bin/python -m arbies.tools.verify_live --recording` after `make dev-backend`), then continue with the dashboard and the paper-trading checks.
 
+## Session 4 — new cloud session after network settings update (2026-10-13 10:42 UTC)
+
+Fresh container, started from `293b917` on `claude/vigilant-ptolemy-9yuhtw`. So the network policy was the one in force when this session started.
+
+| Check | Result |
+|---|---|
+| HTTPS CONNECT to `api.kraken.com`, `ws.kraken.com`, `api.coinbase.com`, `advanced-trade-ws.coinbase.com`, `www.bitstamp.net`, `ws.bitstamp.net` | ❌ All still **403 Forbidden** from the egress proxy (`CONNECT tunnel failed, response 403`) |
+| Control: `pypi.org`, `api.github.com` through the same proxy | ✅ 200 (the proxy works; only the exchange hosts are denied) |
+| `python -m arbies.tools.verify_live` | ❌ `Exchange feeds: 0/3 verified`, `OVERALL: FAIL` (`load_markets: ExchangeNotAvailable` on all three) |
+| Two exchanges on real public data / real order-book updates | ⏸ Not possible |
+| Real snapshots recorded in PostgreSQL | ⏸ Not possible (no feeds) |
+| Dashboard with genuine live prices | ⏸ Not possible |
+| £500 paper session, fee calculations, simulated trades, portfolio accounting on live data | ⏸ Not started. It requires live books, and nothing synthetic was substituted |
+| Live trading | ✅ Still disabled |
+
+Conclusion: the session restart did not help. The environment's network policy still does not allow the exchange hosts. Retries stopped here, and no attempt was made to work around the proxy.
+To unblock: in the cloud environment settings, under Network access, either choose a broader access level or add the six hosts above under Allowed domains (leave "Allow package managers" ticked). See https://code.claude.com/docs/en/cloud-environments#network-access. Then start a new session and run `cd backend && .venv/bin/python -m arbies.tools.verify_live`.
+
 ## Environment limitations encountered
 
 - Outbound access to exchange APIs (kraken, coinbase, bitstamp, gemini, bitfinex, binance, okx, bybit) was blocked by the sandbox network proxy, which returned 403 on CONNECT. Nothing was mocked in place of real results: synthetic data is labelled as such everywhere.
