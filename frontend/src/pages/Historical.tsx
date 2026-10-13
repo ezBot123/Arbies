@@ -175,7 +175,7 @@ function SimList({ sims, selected, onSelect }: { sims: any[]; selected: number |
             <tr key={s.id} className={`cursor-pointer ${selected === s.id ? 'bg-panel2' : ''}`} onClick={() => onSelect(s.id)}>
               <td className="num">{s.id}</td>
               <td><Badge tone={s.status === 'completed' ? (s.headline?.answerable ? 'pos' : 'warn') : s.status === 'failed' ? 'neg' : 'accent'}>
-                {s.status === 'completed' ? (s.headline?.answerable ? 'complete' : 'partial') : s.status}{s.status === 'running' ? ` ${Math.round((s.progress ?? 0) * 100)}%` : ''}</Badge></td>
+                {s.status === 'completed' ? (s.headline?.answerable ? 'complete' : 'partial data') : s.status}{s.status === 'running' ? ` ${Math.round((s.progress ?? 0) * 100)}%` : ''}</Badge></td>
               <td className="r num">{gbp(s.headline?.ending_value_gbp)}</td>
               <td onClick={(e) => e.stopPropagation()}>
                 <button className="text-muted hover:text-neg" title="Delete" onClick={() => ask({ title: `Delete simulation #${s.id}?`, message: 'Results and ledger are removed permanently.', danger: true, label: 'Delete', action: async () => { await del(`/historical/simulations/${s.id}`); qc.invalidateQueries({ queryKey: ['/historical/simulations'] }) } })}><Trash2 size={13} /></button>
@@ -195,7 +195,14 @@ function SimDetail({ id }: { id: number }) {
   const s = sim.data
   if (!s) return <Spinner />
   if (s.status === 'queued' || s.status === 'running') return <Card><Spinner label={`Simulating… ${Math.round((s.progress ?? 0) * 100)}%`} /></Card>
-  if (s.status === 'failed') return <Card title={`Simulation #${id} failed`}><ErrorBox error={s.error} /></Card>
+  if (s.status === 'failed' || s.status === 'partial') return (
+    <Card title={s.status === 'partial' ? `Simulation #${id} is partially complete` : `Simulation #${id} failed`}>
+      <div className="space-y-3">
+        <ErrorBox error={s.error} />
+        <div className="text-[12px] text-muted">Finished variants and the order-book cache are kept, so resuming only runs what is left.</div>
+        <Button onClick={async () => { await post(`/historical/simulations/${id}/resume`); sim.refetch() }}><Play size={14} /> Resume</Button>
+      </div>
+    </Card>)
   const r = s.result
   const h = r.headline
   const v = r.variants[h.primary_variant]
