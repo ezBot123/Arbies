@@ -98,7 +98,7 @@ class SimulationConfig(BaseModel):
     reference_fallbacks: list[str] = Field(default_factory=lambda: ["bitstamp", "coinbase"])
     btc_benchmark_exchange: str = "kraken"
     btc_benchmark_spread_bps: Decimal = Decimal("10")  # half-spread/slippage allowance on benchmark buys
-    decision_interval_ms: int = 500
+    decision_interval_ms: int = 1000  # imported books are sampled at 1 s; deciding more often adds cost, not information
     train_fraction: float = Field(0.6, gt=0.1, lt=0.9)
     seed: int = 42
 

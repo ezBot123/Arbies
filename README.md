@@ -80,6 +80,7 @@ make audit       # pip-audit + npm audit
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Components, data flow, technology decisions (including why Hummingbot/Condor are not used) |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Setup, project layout, configuration, testing, conventions |
 | [BACKTESTING.md](BACKTESTING.md) | Replay engine, fill model, metrics, walk-forward validation, reproducibility |
+| [HISTORICAL_SIMULATION.md](HISTORICAL_SIMULATION.md) | £500 + £100/month historical simulator: data sources, importer, fees, benchmarks, validation |
 | [STRATEGIES.md](STRATEGIES.md) | Cross-exchange and triangular maths, cost model, rejection reasons |
 | [RISK_MANAGEMENT.md](RISK_MANAGEMENT.md) | Deterministic risk engine, limits, kill switch, circuit breaker |
 | [SECURITY.md](SECURITY.md) | Authentication, secrets, live-trading gates, agent permissions |

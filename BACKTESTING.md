@@ -1,5 +1,7 @@
 # Backtesting
 
+> For long-horizon simulations with monthly contributions, imported Tardis.dev order books and benchmarks, see [HISTORICAL_SIMULATION.md](HISTORICAL_SIMULATION.md).
+
 Backtesting is a core part of Arbies. The engine (`backend/arbies/backtest/engine.py`) replays recorded order-book snapshots event by event. It runs the same `TradingCore` that the paper trader uses.
 
 ## Data

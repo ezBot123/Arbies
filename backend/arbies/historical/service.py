@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import gzip
 import hashlib
-import heapq
 import io
 import json
 import multiprocessing
@@ -21,9 +21,8 @@ from types import SimpleNamespace
 
 from sqlalchemy import delete, insert, select
 
-from arbies.backtest.dataset import load_books
-from arbies.core.models import utcnow
-from arbies.db.models import HistoricalSimTrade, HistoricalSimulation
+from arbies.core.models import DataSource, OrderBook, utcnow
+from arbies.db.models import HistoricalSimTrade, HistoricalSimulation, OrderBookSnapshot
 from arbies.db.session import Database
 from arbies.historical.coverage import coverage_report, minute_sets
 from arbies.historical.reference import DailyMarks, load_series
@@ -162,37 +161,35 @@ class HistoricalService:
         cache.mkdir(parents=True, exist_ok=True)
         day_files: list[str] = []
         try:
-            # phase 1: load each day's genuine order books once, chronologically merged across sources
+            # phase 1: stream each day's genuine order books once (chronological across sources) into compressed
+            # frames of primitive rows - memory stays bounded by the frame size, not the day size
             for i, day in enumerate(days):
                 d0 = datetime(day.year, day.month, day.day, tzinfo=UTC)
                 lo, hi = max(d0, cfg.start), min(d0 + timedelta(days=1) - timedelta(microseconds=1), cfg.end)
-                lists = [await load_books(self.db, src, cfg.exchanges, cfg.symbols, lo, hi) for src in cfg.data_sources]
-                books = list(heapq.merge(*lists, key=lambda ob: ob.received_ts))
-                events += len(books)
-                f = cache / f"{day.isoformat()}.pkl"
-                await asyncio.to_thread(_dump, f, books)
+                f = cache / f"{day.isoformat()}.pkl.gz"
+                events += await self._write_day(f, sources, cfg.exchanges, cfg.symbols, lo, hi)
                 day_files.append(str(f))
-                del books, lists
-                self.progress[sid] = 0.3 * (i + 1) / max(1, len(days))
-            # phase 2: replay every variant over all days (each variant is independent and deterministic)
-            jobs = [(spec, cfg_json, rules, marks, day_files) for spec in specs]
-            done = 0
-            if self.workers > 1 and len(jobs) > 1:
+                self.progress[sid] = 0.25 * (i + 1) / max(1, len(days))
+            # phase 2: each worker parses each day once and replays its group of variants in lockstep
+            # (variants are independent and deterministic, so grouping does not change any result)
+            groups = balance_groups(specs, self.workers)
+            jobs = [(g, cfg_json, rules, marks, day_files) for g in groups]
+            by_name: dict[str, VariantResult] = {}
+            if len(jobs) > 1:
                 loop = asyncio.get_running_loop()
                 ctx = multiprocessing.get_context("spawn")
-                with ProcessPoolExecutor(max_workers=min(self.workers, len(jobs)), mp_context=ctx) as pool:
-                    futs = [loop.run_in_executor(pool, replay_variant, *j) for j in jobs]
+                with ProcessPoolExecutor(max_workers=len(jobs), mp_context=ctx) as pool:
+                    futs = [loop.run_in_executor(pool, replay_group, *j) for j in jobs]
+                    done = 0
                     for fut in asyncio.as_completed(futs):
-                        await fut
+                        for r in await fut:
+                            by_name[r.name] = r
                         done += 1
-                        self.progress[sid] = 0.3 + 0.6 * done / len(jobs)
-                    results: list[VariantResult] = [f.result() for f in futs]
+                        self.progress[sid] = 0.25 + 0.65 * done / len(jobs)
             else:
-                results = []
-                for j in jobs:
-                    results.append(await asyncio.to_thread(replay_variant, *j))
-                    done += 1
-                    self.progress[sid] = 0.3 + 0.6 * done / len(jobs)
+                for r in await asyncio.to_thread(replay_group, *jobs[0]):
+                    by_name[r.name] = r
+            results: list[VariantResult] = [by_name[spec[0]] for spec in specs]
         finally:
             shutil.rmtree(cache, ignore_errors=True)
 
@@ -290,6 +287,23 @@ class HistoricalService:
                    "detail": j.to_dict()} for r in results for j in r.jobs]
         return result, trades
 
+    async def _write_day(self, path: Path, sources: tuple[str, ...], exchanges: list[str], symbols: list[str],
+                         lo: datetime, hi: datetime, frame: int = 20000) -> int:
+        S = OrderBookSnapshot
+        q = (select(S.exchange, S.symbol, S.bids, S.asks, S.received_ts, S.exchange_ts, S.sequence, S.source)
+             .where(S.source.in_(sources), S.exchange.in_(exchanges), S.symbol.in_(symbols), S.received_ts >= lo,
+                    S.received_ts <= hi)
+             .order_by(S.received_ts, S.id).execution_options(yield_per=frame))
+        n = 0
+        with gzip.open(path, "wb", compresslevel=1) as fh:
+            async with self.db.session() as s:
+                res = await s.stream(q)
+                async for part in res.partitions():
+                    rows = [tuple(r) for r in part]
+                    n += len(rows)
+                    await asyncio.to_thread(pickle.dump, rows, fh, pickle.HIGHEST_PROTOCOL)
+        return n
+
     # ------------------------------------------------------------------ queries
     async def list(self, limit: int = 50) -> list[dict]:
         async with self.db.session() as s:
@@ -372,24 +386,47 @@ class HistoricalService:
         return buf.getvalue()
 
 
-def _dump(path: Path, books: list) -> None:
-    with open(path, "wb") as fh:
-        pickle.dump(books, fh, protocol=pickle.HIGHEST_PROTOCOL)
+WEIGHTS = {"cross_exchange": 0.6, "triangular": 0.6, "combined": 1.0}
 
 
-def replay_variant(spec: tuple, cfg_json: dict, rules: dict, marks: DailyMarks, day_files: list[str]) -> VariantResult:
-    """Replay one variant over the cached days. Module-level so it can run in a worker process."""
-    name, strategies, preset, fee_name = spec
+def balance_groups(specs: list[tuple], workers: int) -> list[list[tuple]]:
+    """Deterministically spread variants over ``workers`` groups by estimated cost (greedy, heaviest first)."""
+    n = max(1, min(workers, len(specs)))
+    groups: list[list[tuple]] = [[] for _ in range(n)]
+    load = [0.0] * n
+    for spec in sorted(specs, key=lambda sp: (-WEIGHTS.get(sp[0].split("|")[0], 1.0), sp[0])):
+        i = load.index(min(load))
+        groups[i].append(spec)
+        load[i] += WEIGHTS.get(spec[0].split("|")[0], 1.0)
+    return [g for g in groups if g]
+
+
+def iter_day(path: str):
+    """Yield OrderBooks from a day file written by ``HistoricalService._write_day`` (this service's own DB rows)."""
+    with gzip.open(path, "rb") as fh:
+        while True:
+            try:
+                rows = pickle.load(fh)
+            except EOFError:
+                return
+            for ex, sym, bids, asks, rt, et, seq, src in rows:
+                yield OrderBook.from_levels(ex, sym, bids, asks, received_ts=rt, exchange_ts=et, source=DataSource(src),
+                                            sequence=seq)
+
+
+def replay_group(specs: list[tuple], cfg_json: dict, rules: dict, marks: DailyMarks,
+                 day_files: list[str]) -> list[VariantResult]:
+    """Replay a group of variants over the cached days, parsing each book once. Runs in a worker process."""
     cfg = SimulationConfig.model_validate(cfg_json)
-    params, risk, fill = preset_models(cfg, preset)
-    rp = VariantReplay(name, strategies, cfg, params, risk, fill, cfg.fees(fee_name), rules, marks)
+    replays = []
+    for name, strategies, preset, fee_name in specs:
+        params, risk, fill = preset_models(cfg, preset)
+        replays.append(VariantReplay(name, strategies, cfg, params, risk, fill, cfg.fees(fee_name), rules, marks))
     for f in day_files:
-        with open(f, "rb") as fh:
-            books = pickle.load(fh)  # written by this service from its own database rows
-        for ob in books:
-            rp.on_book(ob)
-        del books
-    return rp.finish()
+        for ob in iter_day(f):
+            for rp in replays:
+                rp.on_book(ob)
+    return [rp.finish() for rp in replays]
 
 
 def assumptions(cfg: SimulationConfig) -> list[str]:
@@ -406,6 +443,8 @@ def assumptions(cfg: SimulationConfig) -> list[str]:
         "Risk exposure limits scale with portfolio value (total <= 100%, per exchange/asset <= 60%, daily loss <= "
         "5%) so contributions do not trip limits sized for £500; per-trade size limits are unchanged."
         if cfg.scale_risk_with_capital else "Risk limits are fixed in GBP as configured.",
+        f"Decisions are taken at most every {cfg.decision_interval_ms} ms of replayed time (imported books are "
+        "sampled at 1 s per market); fills execute after the configured latency against the book current at that time.",
         "Rebalancing between exchanges uses the configured withdrawal fees and transfer delays.",
         "No interest, staking, tax, deposit/withdrawal bank fees or account-level fee discounts are modelled.",
         "Deposits are never counted as profit: trading P&L, market/inventory P&L and conversion costs are reported "
