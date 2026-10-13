@@ -1,0 +1,34 @@
+# Local deployment: PostgreSQL + Arbies (API and dashboard on http://localhost:8000)
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-arbies}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-arbies}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-arbies}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        CODE_REVISION: ${CODE_REVISION:-unknown}
+    env_file: .env
+    environment:
+      ARBIES_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-arbies}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-arbies}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"   # bind to localhost; put a TLS reverse proxy in front for remote access
+    restart: unless-stopped
+
+volumes:
+  pgdata:

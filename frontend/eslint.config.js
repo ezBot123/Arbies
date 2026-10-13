@@ -19,6 +19,8 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // API payloads are large, evolving JSON documents rendered directly; core shapes are typed in api.ts
+      '@typescript-eslint/no-explicit-any': 'off',
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

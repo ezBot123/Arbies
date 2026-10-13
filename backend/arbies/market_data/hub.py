@@ -16,10 +16,12 @@ from arbies.market_data.base import ConnStatus, ExchangeAdapter, ExchangeHealth
 log = get_logger(__name__)
 
 UK_ELIGIBILITY_NOTES = {
-    "kraken": "Kraken (Payward Ltd) serves UK customers; verify your account's permissions and product availability.",
-    "coinbase": "Coinbase (CB Payments Ltd) serves UK customers; verify Advanced Trade API access for your account.",
-    "bitstamp": "Bitstamp UK serves UK customers; verify API access for your account.",
-    "gemini": "Gemini serves UK customers; verify API access for your account.",
+    "kraken": "Kraken offers spot trading to UK customers (at time of writing). Verify your account's eligibility, "
+              "product availability and API permissions before relying on it.",
+    "coinbase": "Coinbase offers spot trading to UK customers (at time of writing). Verify Advanced Trade API access "
+                "for your account.",
+    "bitstamp": "Bitstamp offers spot trading to UK customers (at time of writing). Verify API access for your account.",
+    "gemini": "Gemini offers spot trading to UK customers (at time of writing). Verify API access for your account.",
 }
 
 

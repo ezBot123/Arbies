@@ -64,6 +64,7 @@ body {
 
 .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
+@layer components {
 table.data { width: 100%; border-collapse: collapse; }
 table.data th {
   text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; text-transform: uppercase;
@@ -79,6 +80,7 @@ input, select, textarea {
   padding: 5px 8px; font-size: 13px; outline: none;
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+}
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }

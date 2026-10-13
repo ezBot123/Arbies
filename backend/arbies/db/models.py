@@ -31,7 +31,6 @@ from sqlalchemy.types import TypeDecorator
 from arbies.core.models import utcnow
 
 
-
 class UTCDateTime(TypeDecorator):
     """Timezone-aware UTC datetimes on every backend (SQLite drops tzinfo otherwise)."""
 

@@ -23,7 +23,7 @@ export default function Scanner() {
   const [sort, setSort] = useState<{ k: SortKey; desc: boolean }>({ k: 'net_return_pct', desc: true })
   const [selected, setSelected] = useState<Opportunity | null>(null)
 
-  const all = tick?.opportunities ?? []
+  const all = useMemo(() => tick?.opportunities ?? [], [tick])
   const rows = useMemo(() => {
     let r = all.filter((o) => (kind === 'all' || o.kind === kind) && (!qualifiedOnly || o.qualified)
       && (exchange === 'all' || o.exchanges.includes(exchange))

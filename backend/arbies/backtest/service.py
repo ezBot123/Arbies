@@ -28,6 +28,9 @@ log = get_logger(__name__)
 
 
 def detect_code_revision() -> str:
+    import os
+    if os.environ.get("ARBIES_CODE_REVISION"):
+        return os.environ["ARBIES_CODE_REVISION"]
     try:
         root = Path(__file__).resolve().parents[3]
         rev = subprocess.run(["git", "rev-parse", "--short=12", "HEAD"], cwd=root, capture_output=True, text=True,

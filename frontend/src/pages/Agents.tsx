@@ -17,8 +17,9 @@ export default function Agents() {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [task, setTask] = useState<any>(null)
-  const [useLlm, setUseLlm] = useState(true)
-  const aiConfigured = settings.data?.settings?.ai_provider_configured
+  const aiConfigured = !!settings.data?.settings?.ai_provider_configured
+  const [llmPref, setUseLlm] = useState(true)
+  const useLlm = aiConfigured && llmPref
 
   const run = async (name: string) => {
     setBusy(name); setError(null)

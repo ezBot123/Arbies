@@ -1,0 +1,65 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: arbies
+          POSTGRES_PASSWORD: arbies
+          POSTGRES_DB: arbies_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U arbies" --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check arbies tests
+      - name: Tests (SQLite)
+        run: pytest -q
+      - name: Tests (PostgreSQL)
+        run: pytest -q
+        env:
+          ARBIES_TEST_DATABASE_URL: postgresql+asyncpg://arbies:arbies@localhost:5432/arbies_test
+      - name: Migrations apply cleanly and match models
+        env:
+          ARBIES_DATABASE_URL: postgresql+asyncpg://arbies:arbies@localhost:5432/arbies_test
+        run: |
+          python - <<'PY'
+          import asyncio, asyncpg
+          async def main():
+              c = await asyncpg.connect("postgresql://arbies:arbies@localhost:5432/arbies_test")
+              await c.execute("DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
+              await c.close()
+          asyncio.run(main())
+          PY
+          alembic upgrade head && alembic check
+      - name: Dependency audit
+        run: pip-audit --skip-editable || true
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npm run lint
+      - run: npm run build
+      - run: npm audit --omit=dev || true

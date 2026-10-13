@@ -176,7 +176,7 @@ def test_safe_exchange_forbids_withdrawals_and_trading_when_read_only():
     with pytest.raises(LiveTradingDisabled):
         ro.create_order("BTC/USD", "limit", "buy", 1, 1)
     with pytest.raises(LiveTradingDisabled):
-        ro.some_unlisted_method
+        _ = ro.some_unlisted_method
     assert ro.fetch_balance() == {"total": {}}
     rw = SafeExchange(fake, allow_trading=True)
     with pytest.raises(LiveTradingDisabled):
