@@ -139,3 +139,34 @@ async def test_paper_via_api(client):
     assert (await c.post("/api/paper/pause")).json()["status"] == "paused"
     assert (await c.post("/api/paper/stop")).json()["status"] == "stopped"
     assert (await c.get("/api/paper/sessions")).json()
+
+
+async def test_historical_endpoints(client, tmp_path):
+    c, rt = client
+    await login(c)
+    for path in ["/api/historical/coverage", "/api/historical/datasets", "/api/historical/reference",
+                 "/api/historical/fee-schedules", "/api/historical/defaults", "/api/historical/simulations"]:
+        r = await c.get(path)
+        assert r.status_code == 200, (path, r.text)
+    d = (await c.get("/api/historical/defaults")).json()
+    assert d["contributions"]["recurring_count"] == 21 and d["contributions"]["total"] == "2600"
+    # imports are confined to the configured directory
+    rt.settings.historical_data_dir = str(tmp_path)
+    r = await c.post("/api/historical/datasets/import", json={"path": "../../etc/passwd"})
+    assert r.status_code == 400
+    (tmp_path / "x.csv").write_text("exchange,symbol,timestamp,local_timestamp,id,side,price,amount\n")
+    r = await c.post("/api/historical/datasets/import", json={"path": "x.csv"})
+    assert r.status_code == 200 and r.json()[0]["status"] == "rejected"  # trades are not order books
+    # synthetic sources are refused; without reference prices the run fails loudly
+    r = await c.post("/api/historical/simulations", json={"data_sources": ["synthetic"]})
+    assert r.status_code == 422
+    r = await c.post("/api/historical/simulations", json={"run_parameter_study": False})
+    assert r.status_code == 200
+    import asyncio
+    for _ in range(100):
+        s = (await c.get(f"/api/historical/simulations/{r.json()['id']}")).json()
+        if s["status"] in ("completed", "failed"):
+            break
+        await asyncio.sleep(0.05)
+    assert s["status"] == "failed" and "reference prices" in s["error"]
+    assert (await c.get(f"/api/historical/simulations/{s['id']}/csv?kind=monthly")).status_code == 404

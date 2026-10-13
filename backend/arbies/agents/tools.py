@@ -364,6 +364,64 @@ class RecommendationArgs(BaseModel):
     proposed_change: dict | None = None
 
 
+class OptionalIdArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: int | None = None  # None = most recent completed simulation
+
+
+@registry.register("get_historical_simulation", "Results of a historical investment simulation (latest completed "
+                   "if no id): headline, contributions, coverage, per-variant summaries, benchmarks, candle screening "
+                   "and the parameter study's TRAINING results. Test-window results are sealed from agents.",
+                   Permission.READ, OptionalIdArgs)
+async def get_historical_simulation(rt, args: OptionalIdArgs, agent: str):
+    sid = args.id
+    if sid is None:
+        done = [x for x in await rt.historical.list() if x["status"] == "completed"]
+        if not done:
+            return {"error": "no completed historical simulation"}
+        sid = done[0]["id"]
+    d = await rt.historical.get(sid)
+    if d is None or not d.get("result"):
+        return {"error": "not found or not completed"}
+    r = d["result"]
+    study = r.get("parameter_study")
+    if study:
+        study = {k: v for k, v in study.items() if k not in ("chosen_test_pnl_gbp",)}
+        study["rows"] = [{k: v for k, v in row.items() if not k.startswith("test_")} for row in study.get("rows", [])]
+    screening = r.get("screening") or {}
+    return {
+        "id": sid, "headline": r["headline"], "contributions": {k: v for k, v in r["contributions"].items() if k != "schedule"},
+        "coverage": {k: r["coverage"][k] for k in ("overlap_minutes", "overlap_pct", "continuous", "definition")},
+        "variants": {k: {"label": v["label"], "preset": v["preset"], "fee_schedule": v["fee_schedule"],
+                         "summary": v["summary"], "breakdown": {kk: v["breakdown"][kk] for kk in ("pnl_by_exchange",
+                                                                                                "pnl_by_pair",
+                                                                                                "rejection_reasons")}}
+                     for k, v in r["variants"].items()},
+        "benchmarks": {k: {kk: vv for kk, vv in b.items() if kk not in ("monthly", "buys", "equity_weekly")}
+                       for k, b in r["benchmarks"].items()},
+        "screening": {"caveat": screening.get("caveat"), "missing": screening.get("missing"),
+                      "pairs": [{k: v for k, v in p.items() if k not in ("monthly", "largest_gaps")}
+                                for p in screening.get("pairs", [])]},
+        "parameter_study": study,
+        "fees": r.get("fees"), "warnings": r.get("warnings"), "assumptions": r.get("assumptions"),
+    }
+
+
+@registry.register("get_historical_coverage", "Genuine order-book data coverage (live recorded and imported) since "
+                   "1 Jan 2025, imported dataset provenance and reference-price inventory.", Permission.READ)
+async def get_historical_coverage(rt, args: NoArgs, agent: str):
+    from datetime import UTC, datetime
+
+    from arbies.historical.coverage import coverage_report, dataset_list
+    from arbies.historical.reference import reference_inventory
+    cov = await coverage_report(rt.db, datetime(2025, 1, 1, tzinfo=UTC), datetime.now(UTC))
+    cov.pop("days", None)
+    return {"coverage": cov, "datasets": [{k: d[k] for k in ("id", "provider", "data_type", "exchange", "symbol",
+                                                               "status", "snapshots_written", "first_exchange_ts",
+                                                               "last_exchange_ts")} for d in await dataset_list(rt.db)],
+            "reference_prices": await reference_inventory(rt.db)}
+
+
 @registry.register("propose_recommendation", "Record a recommendation for the human operator to approve or reject. "
                    "Proposals are never applied automatically.", Permission.PROPOSE, RecommendationArgs)
 async def propose_recommendation(rt, args: RecommendationArgs, agent: str):

@@ -5,6 +5,7 @@ import { Layout } from './components/Layout'
 import { Spinner } from './components/ui'
 import Agents from './pages/Agents'
 import Backtests from './pages/Backtests'
+import Historical from './pages/Historical'
 import Login from './pages/Login'
 import Overview from './pages/Overview'
 import Paper from './pages/Paper'
@@ -32,6 +33,7 @@ export default function App() {
           <Route index element={<Overview />} />
           <Route path="scanner" element={<Scanner />} />
           <Route path="backtests" element={<Backtests />} />
+          <Route path="historical" element={<Historical />} />
           <Route path="paper" element={<Paper />} />
           <Route path="agents" element={<Agents />} />
           <Route path="strategies" element={<Strategies />} />

@@ -28,6 +28,9 @@ class Valuator:
         self.reporting = reporting
         self.fallback = dict(fallback or {})
         self._edges: dict[str, dict[str, Decimal]] = {}
+        # Optional reference prices (e.g. completed daily candle closes) used only for pairs that no
+        # order book provides. Set by long-horizon simulations; empty everywhere else.
+        self.base_prices: dict[str, Decimal] = {}
 
     def update_from_books(self, books: Iterable[OrderBook]) -> None:
         edges: dict[str, dict[str, Decimal]] = {}
@@ -42,6 +45,11 @@ class Valuator:
             m = sum(mids) / len(mids)
             edges.setdefault(base, {})[quote] = m
             edges.setdefault(quote, {})[base] = 1 / m
+        for sym, p in self.base_prices.items():
+            base, quote = split_symbol(sym)
+            if p > 0 and quote not in edges.get(base, {}):
+                edges.setdefault(base, {})[quote] = p
+                edges.setdefault(quote, {})[base] = 1 / p
         self._edges = edges
 
     def set_edges(self, prices: dict[str, Decimal]) -> None:

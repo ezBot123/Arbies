@@ -277,6 +277,64 @@ async def analyze_performance(gw: ToolGateway, inp: dict) -> AgentReport:
                                 "hedge_losses_24h_gbp": hedge})
 
 
+async def analyze_historical(gw: ToolGateway, inp: dict) -> AgentReport:
+    sim = await gw.call("get_historical_simulation", {"id": inp.get("simulation_id")})
+    if "error" in sim:
+        return AgentReport(summary="No completed historical simulation to analyse.",
+                           recommendations=[RecommendationDraft(
+                               title="Run the Historical Investment Simulator",
+                               detail="Fetch daily reference prices and run the default £500 + £100/month scenario.")])
+    h = sim["headline"]
+    findings, recs = [], []
+    findings.append(f"Status: {h['status']}. Contributions £{_f(h['total_personal_contributions_gbp']):.2f}; ending "
+                    f"value £{_f(h['ending_value_gbp']):.2f} ({h['ending_value_meaning']})")
+    findings.append(f"Trading P&L £{_f(h['trading_pnl_gbp']):.2f} ({h['trading_pnl_scope']}); inventory/market P&L "
+                    f"£{_f(h['market_inventory_pnl_gbp']):.2f}; conversion costs £{_f(h['conversion_costs_gbp']):.2f}.")
+    cov = sim["coverage"]
+    findings.append(f"Order-book coverage with >= 2 exchanges: {cov['overlap_minutes']} minutes "
+                    f"({cov['overlap_pct']}% of the period).")
+    by_set = {}
+    for v in sim["variants"].values():
+        s = v["summary"]
+        if v["preset"] == "moderate" and v["fee_schedule"] == "base":
+            by_set[v["label"]] = _f(s["trading"]["net_trading_profit_gbp"])
+        findings.append(f"{v['label']} [{v['preset']}, fees {v['fee_schedule']}]: {s['trading']['trades']} trades, "
+                        f"net trading £{_f(s['trading']['net_trading_profit_gbp']):.4f}, eligible opportunities "
+                        f"{s['trading']['opportunities_eligible']}.")
+    if by_set:
+        best = max(by_set.items(), key=lambda kv: kv[1])
+        findings.append(f"Best strategy set after costs (observed periods only): {best[0]} (£{best[1]:.4f}).")
+    b = sim["benchmarks"]
+    findings.append(f"Benchmarks: cash £{_f(b['cash']['final_value_gbp']):.2f}; BTC buy-and-hold "
+                    f"£{_f(b['btc']['final_value_gbp']):.2f} (full BTC price risk).")
+    for p in sim["screening"]["pairs"]:
+        share = p["share_of_minutes_above_fees_pct"]
+        findings.append(f"Candle screening {p['pair']}: {p['minutes_both_traded']} minutes compared; close gap above "
+                        f"round-trip fees in {share} % of minutes (indicator only; not executable).")
+    unverified = [e for sch in (sim.get("fees") or {}).values() for e in sch["entries"]
+                  if e["verification"] in ("unverified", "secondary_sources")]
+    if unverified:
+        findings.append(f"{len(unverified)} fee-schedule entries are not confirmed by an official source.")
+        recs.append(RecommendationDraft(title="Confirm account fee tiers",
+                                        detail="Several historical fee entries rest on secondary sources. Confirm "
+                                               "them from account statements and set custom fees.", severity="warning"))
+    if not cov["continuous"]:
+        recs.append(RecommendationDraft(
+            title="Obtain historical order-book data before drawing conclusions",
+            detail=("Trading was only observable in a tiny fraction of the period. Import genuine Level 2 data (e.g. "
+                    "Tardis.dev first-of-month samples, or a paid continuous dataset after explicit approval) and "
+                    "re-run. Do not extrapolate the observed sample."), severity="warning",
+            proposed_change={"action": "import_historical_data"}))
+    recs.append(RecommendationDraft(
+        title="Re-run the parameter study once more data exists",
+        detail="Select presets on the training window only and confirm on the unseen test window; the current "
+               "sample is too small for a meaningful split."))
+    return AgentReport(summary=f"Historical simulation {sim['id']}: {h['status']}.", findings=findings,
+                       recommendations=recs,
+                       metrics={"simulation_id": sim["id"], "overlap_pct": cov["overlap_pct"],
+                                "answerable": h["answerable"]})
+
+
 AGENTS: dict[str, AgentSpec] = {}
 
 
@@ -307,6 +365,12 @@ _spec("performance_analyst", "Performance Analyst", "Produces readable performan
       "and compares simulated strategies.", "performance",
       ["get_paper_trading_status", "get_paper_trades", "list_backtests", "get_backtest", "propose_recommendation"],
       analyze_performance, 1440)
+
+
+_spec("historical_research", "Historical Research Agent", "Interprets historical investment simulations: "
+      "coverage, strategy comparison, fee sensitivity, benchmarks and weaknesses of the backtest, and proposes "
+      "follow-up experiments. It can read results but cannot run, change or delete simulations.", "research",
+      ["get_historical_simulation", "get_historical_coverage", "propose_recommendation"], analyze_historical)
 
 
 async def analyze_orchestrator(gw: ToolGateway, inp: dict) -> AgentReport:  # replaced at runtime by runner

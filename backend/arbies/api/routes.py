@@ -778,3 +778,136 @@ async def live_disarm(request: Request, user: str = Depends(require_user), rt=De
     rt.gate.disarm()
     await rt.audit(user, "live_disarmed", ip=_ip(request))
     return rt.gate.status()
+
+
+# ============================================================================ historical investment simulator
+class HistoricalImportBody(BaseModel):
+    path: str  # file or directory, relative to ARBIES_HISTORICAL_DATA_DIR
+    provider: str = "tardis.dev"
+    source_url: str = ""
+    sample_interval_ms: int = Field(1000, ge=100, le=60000)
+    depth: int = Field(25, ge=1, le=100)
+    notes: str = ""
+
+
+def _historical_path(rt, rel: str):
+    from pathlib import Path
+    root = Path(rt.settings.historical_data_dir).resolve()
+    p = (root / rel).resolve()
+    if p != root and root not in p.parents:
+        raise HTTPException(400, "path must be inside the configured historical data directory")
+    if not p.exists():
+        raise HTTPException(404, f"{rel} not found in {root}")
+    return p
+
+
+@api.get("/historical/coverage")
+async def historical_coverage(start: datetime = Query(datetime(2025, 1, 1)), end: datetime | None = None,
+                              rt=Depends(get_rt)):
+    from datetime import UTC
+
+    from arbies.historical.coverage import coverage_report
+    start = start if start.tzinfo else start.replace(tzinfo=UTC)
+    end = end or utcnow()
+    end = end if end.tzinfo else end.replace(tzinfo=UTC)
+    rep = await coverage_report(rt.db, start, end)
+    rep.pop("days", None)
+    return rep
+
+
+@api.get("/historical/datasets")
+async def historical_datasets(rt=Depends(get_rt)):
+    from arbies.historical.coverage import dataset_list
+    return await dataset_list(rt.db)
+
+
+@api.post("/historical/datasets/import")
+async def historical_import(body: HistoricalImportBody, request: Request, user: str = Depends(require_user),
+                            rt=Depends(get_rt)):
+    from arbies.historical.importer import HistoricalImporter, ImportFormatError, iter_files
+    p = _historical_path(rt, body.path)
+    imp = HistoricalImporter(rt.db)
+    out = []
+    for f in iter_files([str(p)]):
+        try:
+            r = await imp.import_file(f, provider=body.provider, source_url=body.source_url,
+                                      sample_interval_ms=body.sample_interval_ms, depth=body.depth, notes=body.notes)
+            out.append({"file": f.name, "dataset_id": r.dataset_id, "status": r.status,
+                        "snapshots_written": r.snapshots_written, "resumed_from_line": r.resumed_from_line,
+                        "validation": r.validation})
+        except ImportFormatError as e:
+            out.append({"file": f.name, "status": "rejected", "error": str(e)})
+    await rt.audit(user, "historical_import", body.path, {"files": len(out)}, _ip(request))
+    return out
+
+
+@api.get("/historical/reference")
+async def historical_reference(rt=Depends(get_rt)):
+    from arbies.historical.reference import reference_inventory
+    return await reference_inventory(rt.db)
+
+
+@api.get("/historical/fee-schedules")
+async def historical_fee_schedules():
+    from arbies.historical.plan import default_fee_schedules
+    return {k: v.model_dump(mode="json") for k, v in default_fee_schedules().items()}
+
+
+@api.get("/historical/defaults")
+async def historical_defaults():
+    from arbies.historical.simulator import PRESETS, STRATEGY_LABELS, SimulationConfig
+    cfg = SimulationConfig()
+    return {"config": cfg.model_dump(mode="json"), "presets": PRESETS, "strategies": STRATEGY_LABELS,
+            "contributions": cfg.plan.totals(cfg.start, cfg.end)}
+
+
+@api.post("/historical/simulations")
+async def historical_submit(request: Request, user: str = Depends(require_user), rt=Depends(get_rt)):
+    from pydantic import ValidationError
+
+    from arbies.historical.simulator import SimulationConfig
+    try:
+        cfg = SimulationConfig.model_validate(await request.json())
+    except ValidationError as e:
+        raise HTTPException(422, e.errors(include_url=False, include_context=False)) from e
+    sid = await rt.historical.submit(cfg, requested_by=user)
+    await rt.audit(user, "historical_simulation_submit", str(sid), ip=_ip(request))
+    return {"id": sid, "status": "queued"}
+
+
+@api.get("/historical/simulations")
+async def historical_list(rt=Depends(get_rt)):
+    return await rt.historical.list()
+
+
+@api.get("/historical/simulations/{sid}")
+async def historical_get(sid: int, rt=Depends(get_rt)):
+    d = await rt.historical.get(sid)
+    if d is None:
+        raise HTTPException(404, "not found")
+    return d
+
+
+@api.get("/historical/simulations/{sid}/trades")
+async def historical_trades(sid: int, variant: str | None = None, limit: int = Query(2000, le=20000),
+                            rt=Depends(get_rt)):
+    return await rt.historical.trades(sid, variant, limit)
+
+
+@api.get("/historical/simulations/{sid}/csv")
+async def historical_csv(sid: int, kind: str = "monthly", variant: str | None = None, rt=Depends(get_rt)):
+    try:
+        data = await rt.historical.csv(sid, kind, variant)
+    except KeyError as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return StreamingResponse(iter([data]), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="arbies-historical-{sid}-{kind}.csv"'})
+
+
+@api.delete("/historical/simulations/{sid}")
+async def historical_delete(sid: int, request: Request, user: str = Depends(require_user), rt=Depends(get_rt)):
+    ok = await rt.historical.delete(sid)
+    await rt.audit(user, "historical_simulation_delete", str(sid), ip=_ip(request))
+    return {"deleted": ok}

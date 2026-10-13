@@ -63,7 +63,8 @@ class Settings(BaseSettings):
     record_market_data: bool = True
     record_interval_ms: int = 1000  # per-market snapshot throttle for persistence
     record_depth: int = 20
-    data_retention_days: int = 30
+    data_retention_days: int = 30  # live-recorded data only; imported historical datasets are kept
+    historical_data_dir: str = "data/historical"  # the only directory the import API may read from
 
     # --- Strategy / paper defaults ------------------------------------------------------
     reporting_currency: str = "GBP"

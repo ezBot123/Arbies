@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import secrets
 from datetime import datetime, timedelta
 
@@ -16,6 +17,7 @@ from arbies.core.models import utcnow
 from arbies.db.models import AuditLog, Exchange, Market, RiskEventRecord, SettingKV, SystemLog
 from arbies.db.session import Database
 from arbies.execution.live import LiveTradingGate
+from arbies.historical.service import HistoricalService
 from arbies.logging_setup import get_logger
 from arbies.market_data.hub import UK_ELIGIBILITY_NOTES, MarketDataHub
 from arbies.market_data.recorder import MarketDataRecorder
@@ -40,6 +42,8 @@ class Runtime:
         self.scanner = Scanner(self.hub, self.db, settings, balance_provider=self.paper.balance_fn)
         self.backtests = BacktestService(self.db, lambda: dict(self.hub.rules), settings.fallback_fx_to_gbp)
         self.walkforward = WalkForwardService(self.db, self.backtests)
+        self.historical = HistoricalService(self.db, self.backtests.rules_for, self.backtests.code_revision,
+                                            workers=max(1, min(3, (os.cpu_count() or 2) - 1)))
         self.strategies = StrategyStore(self.db)
         self.vault = CredentialVault(settings.secret_key.get_secret_value() if settings.secret_key else None)
         self.accounts = LiveAccounts(self.db, self.vault)

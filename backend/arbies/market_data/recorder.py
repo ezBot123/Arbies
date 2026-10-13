@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import delete, insert
 
-from arbies.core.models import OrderBook, utcnow
+from arbies.core.models import DataSource, OrderBook, utcnow
 from arbies.db.models import ConnectionEvent, OrderBookSnapshot
 from arbies.db.session import Database
 from arbies.logging_setup import get_logger
@@ -119,7 +119,9 @@ class MarketDataRecorder:
     async def apply_retention(self) -> int:
         cutoff = utcnow() - timedelta(days=self.retention_days)
         async with self.db.session() as s:
-            res = await s.execute(delete(OrderBookSnapshot).where(OrderBookSnapshot.received_ts < cutoff))
+            # only data the recorder itself writes; imported historical datasets are never expired here
+            res = await s.execute(delete(OrderBookSnapshot).where(
+                OrderBookSnapshot.received_ts < cutoff, OrderBookSnapshot.source != DataSource.IMPORTED.value))
             return res.rowcount or 0
 
     def status(self) -> dict:

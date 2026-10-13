@@ -108,6 +108,8 @@ class OrderBookSnapshot(Base):
     asks: Mapped[list]
     depth: Mapped[int] = mapped_column(Integer)
     quality: Mapped[dict] = mapped_column(JSON, default=dict)  # e.g. {"crossed": false, "gap_ms": 120}
+    # provenance of imported rows (historical_datasets.id); NULL for live-recorded / synthetic rows
+    dataset_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
 
 class ConnectionEvent(Base):
@@ -400,3 +402,90 @@ class AuthSession(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     expires_at: Mapped[datetime]
     ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+# ============================================================================ historical data and simulation
+class HistoricalDataset(Base):
+    """Provenance and import state of one external historical file (audit trail)."""
+
+    __tablename__ = "historical_datasets"
+    __table_args__ = (UniqueConstraint("sha256", "sample_interval_ms", "depth", name="uq_hist_dataset_content"),)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    provider: Mapped[str] = mapped_column(String(64))  # e.g. tardis.dev
+    data_type: Mapped[str] = mapped_column(String(64))  # incremental_book_L2 | book_snapshot_25 | quotes
+    exchange: Mapped[str] = mapped_column(String(32), index=True)
+    symbol: Mapped[str] = mapped_column(String(32))  # unified, e.g. BTC/USD
+    raw_symbol: Mapped[str] = mapped_column(String(64), default="")
+    file_name: Mapped[str] = mapped_column(String(512))
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    sample_interval_ms: Mapped[int] = mapped_column(Integer, default=1000)
+    depth: Mapped[int] = mapped_column(Integer, default=25)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending|importing|completed|failed
+    rows_read: Mapped[int] = mapped_column(BigInteger, default=0)
+    snapshots_written: Mapped[int] = mapped_column(BigInteger, default=0)
+    checkpoint_line: Mapped[int] = mapped_column(BigInteger, default=0)  # resume point (data lines consumed)
+    checkpoint_state: Mapped[dict] = mapped_column(JSON, default=dict)  # reconstructed book state at checkpoint
+    first_exchange_ts: Mapped[datetime | None]
+    last_exchange_ts: Mapped[datetime | None]
+    validation: Mapped[dict] = mapped_column(JSON, default=dict)
+    error: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    completed_at: Mapped[datetime | None]
+
+
+class ReferencePrice(Base):
+    """Exchange OHLC candles used ONLY for valuation, deposits, benchmarks and screening - never as
+    executable arbitrage prices."""
+
+    __tablename__ = "reference_prices"
+    __table_args__ = (UniqueConstraint("exchange", "symbol", "interval", "ts", name="uq_refprice"),
+                      Index("ix_refprice_lookup", "exchange", "symbol", "interval", "ts"))
+    id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
+    exchange: Mapped[str] = mapped_column(String(32))
+    symbol: Mapped[str] = mapped_column(String(32))
+    interval: Mapped[str] = mapped_column(String(8))  # 1m | 1d
+    ts: Mapped[datetime]  # candle open time (UTC)
+    open: Mapped[Decimal]
+    high: Mapped[Decimal]
+    low: Mapped[Decimal]
+    close: Mapped[Decimal]
+    volume: Mapped[Decimal]
+    source_url: Mapped[str] = mapped_column(String(256), default="")
+    fetched_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+
+class HistoricalSimulation(Base):
+    __tablename__ = "historical_simulations"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(256))
+    status: Mapped[str] = mapped_column(String(16), default="queued")  # queued|running|completed|failed
+    progress: Mapped[float] = mapped_column(Float, default=0.0)
+    config: Mapped[dict]
+    result: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_hash: Mapped[str] = mapped_column(String(64), default="")
+    code_revision: Mapped[str] = mapped_column(String(64), default="")
+    error: Mapped[str] = mapped_column(Text, default="")
+    requested_by: Mapped[str] = mapped_column(String(64), default="user")
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    started_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+
+
+class HistoricalSimTrade(Base):
+    __tablename__ = "historical_sim_trades"
+    id: Mapped[int] = mapped_column(BigId, primary_key=True, autoincrement=True)
+    simulation_id: Mapped[int] = mapped_column(ForeignKey("historical_simulations.id", ondelete="CASCADE"), index=True)
+    variant: Mapped[str] = mapped_column(String(64))  # strategy variant within the simulation
+    ts: Mapped[datetime]
+    kind: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(32))
+    route: Mapped[list]
+    exchanges: Mapped[list]
+    pnl_gbp: Mapped[Decimal]
+    fees_gbp: Mapped[Decimal]
+    hedge_loss_gbp: Mapped[Decimal]
+    notional_gbp: Mapped[Decimal | None]
+    detail: Mapped[dict]

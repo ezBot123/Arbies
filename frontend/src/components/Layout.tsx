@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  Activity, BarChart3, Bot, Briefcase, FileText, FlaskConical, LayoutDashboard, LogOut, Moon, Octagon, Radar,
+  Activity, BarChart3, History, Bot, Briefcase, FileText, FlaskConical, LayoutDashboard, LogOut, Moon, Octagon, Radar,
   Settings, SlidersHorizontal, Sun,
 } from 'lucide-react'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
@@ -17,6 +17,7 @@ const NAV = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
   { to: '/scanner', label: 'Opportunity Scanner', icon: Radar },
   { to: '/backtests', label: 'Backtesting Lab', icon: FlaskConical },
+  { to: '/historical', label: 'Historical Simulator', icon: History },
   { to: '/paper', label: 'Paper Trading', icon: Activity },
   { to: '/agents', label: 'AI Agent Centre', icon: Bot },
   { to: '/strategies', label: 'Strategy Manager', icon: SlidersHorizontal },
